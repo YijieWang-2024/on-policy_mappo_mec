@@ -1,0 +1,12 @@
+torch
+numpy>=2,<3
+gymnasium>=1.0,<2
+scipy
+seaborn
+matplotlib
+pandas
+wandb
+tensorboardX
+setproctitle
+imageio
+pyglet>=1.5,<2
