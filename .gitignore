@@ -15,3 +15,9 @@ api
 logs
 .nfs*
 *.so
+
+# Local editor and experiment artifacts
+.idea/
+training_logs/
+analysis_outputs/
+.pytest_cache/

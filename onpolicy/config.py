@@ -179,7 +179,7 @@ def get_config():
     parser.add_argument("--use_wandb", action='store_false', default=True, help="[for wandb usage], by default True, will log date to wandb server. or else will use tensorboard to log data.")
 
     # env parameters
-    parser.add_argument("--env_name", type=str, default='MPE', choices=["MPE"], help="specify the name of environment")
+    parser.add_argument("--env_name", type=str, default='MPE', choices=["MPE", "MEC"], help="specify the name of environment")
     parser.add_argument("--use_obs_instead_of_state", action='store_true',
                         default=False, help="Whether to use global state or concatenated obs")
 
@@ -240,8 +240,24 @@ def get_config():
                         help='number of batches for ppo (default: 1)')
     parser.add_argument("--entropy_coef", type=float, default=0.01,
                         help='entropy term coefficient (default: 0.01)')
+    parser.add_argument("--use_entropy_anneal", action='store_true', default=False,
+                        help="linearly anneal entropy_coef to --entropy_coef_min over training")
+    parser.add_argument("--entropy_coef_min", type=float, default=0.0,
+                        help="floor for annealed entropy coefficient")
+    parser.add_argument("--mec_logstd_init", type=float, default=-1.9,
+                        help="initial log-std for MEC Gaussian velocity heads")
+    parser.add_argument("--mec_policy_arch", type=str, default="mean",
+                        choices=["mean", "flat"],
+                        help="MEC population representation")
+    parser.add_argument("--mec_beta_alpha_init", type=float, default=2.0,
+                        help="initial alpha for MEC UAV Beta offload head")
+    parser.add_argument("--mec_beta_eta_init", type=float, default=2.0,
+                        help="initial beta/eta for MEC UAV Beta offload head")
     parser.add_argument("--target_kl", type=float, default=None,
                         help="optional approximate-KL threshold for early stopping PPO epochs")
+    parser.add_argument("--mec_rolewise_loss", action="store_true",
+                        default=False,
+                        help="for MEC, equalize major/minor advantage and policy-loss weighting")
     parser.add_argument("--value_loss_coef", type=float,
                         default=1, help='value loss coefficient (default: 0.5)')
     parser.add_argument("--use_max_grad_norm",
@@ -266,6 +282,9 @@ def get_config():
                         default=False, help='use a linear schedule on the learning rate')
     # save parameters
     parser.add_argument("--save_interval", type=int, default=1, help="time duration between contiunous twice models saving.")
+    parser.add_argument("--save_step_checkpoints", action="store_true",
+                        default=False,
+                        help="also retain numbered step checkpoints")
 
     # log parameters
     parser.add_argument("--log_interval", type=int, default=5, help="time duration between contiunous twice log printing.")
@@ -274,6 +293,14 @@ def get_config():
     parser.add_argument("--use_eval", action='store_true', default=False, help="by default, do not start evaluation. If set`, start evaluation alongside with training.")
     parser.add_argument("--eval_interval", type=int, default=25, help="time duration between contiunous twice evaluation progress.")
     parser.add_argument("--eval_episodes", type=int, default=32, help="number of episodes of a single evaluation.")
+    parser.add_argument("--eval_seed", type=int, default=1000,
+                        help="fixed validation seed for eval/best checkpoint selection")
+    parser.add_argument("--test_seed", type=int, default=100000,
+                        help="held-out MEC test base seed")
+    parser.add_argument("--test_episodes", type=int, default=24,
+                        help="held-out MEC test episodes")
+    parser.add_argument("--test_seed_stride", type=int, default=13,
+                        help="held-out MEC test seed stride")
 
     # render parameters
     parser.add_argument("--save_gifs", action='store_true', default=False, help="by default, do not save render video. If set, save video.")

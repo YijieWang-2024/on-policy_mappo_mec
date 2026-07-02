@@ -74,11 +74,18 @@ class SharedReplayBuffer(object):
             self.available_actions = None
 
         act_shape = get_shape_from_act_space(act_space)
+        # action_log_probs holds the JOINT log-prob per (agent, sample): width 1 for
+        # Discrete and Box (the actor sums log-prob over action dims and returns
+        # [.,1]). Only MultiDiscrete stores per-dim log-probs (ACTLayer emits
+        # [.,n_dims]). Using act_shape for Box would broadcast the single joint
+        # log-prob into act_dim identical columns, and r_mappo's sum over the last
+        # dim would then multiply the PPO actor loss/gradient by act_dim.
+        log_prob_shape = act_shape if act_space.__class__.__name__ == "MultiDiscrete" else 1
 
         self.actions = np.zeros(
             (self.episode_length, self.n_rollout_threads, num_agents, act_shape), dtype=np.float32)
         self.action_log_probs = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape), dtype=np.float32)
+            (self.episode_length, self.n_rollout_threads, num_agents, log_prob_shape), dtype=np.float32)
         self.rewards = np.zeros(
             (self.episode_length, self.n_rollout_threads, num_agents, 1), dtype=np.float32)
 

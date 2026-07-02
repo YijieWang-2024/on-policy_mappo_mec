@@ -40,6 +40,21 @@ class R_MAPPO():
         self._use_valuenorm = args.use_valuenorm
         self._use_value_active_masks = args.use_value_active_masks
         self._use_policy_active_masks = args.use_policy_active_masks
+        self._use_mec_rolewise_loss = bool(
+            getattr(args, "mec_rolewise_loss", False)
+            and getattr(args, "env_name", None) == "MEC"
+        )
+        self._use_grouped_policy_batches = bool(
+            getattr(policy, "uses_grouped_batches", False)
+        )
+        self.mec_set_reconstruction_coef = float(
+            getattr(args, "mec_set_reconstruction_coef", 0.0)
+        )
+        self._use_mec_set_reconstruction = bool(
+            self.mec_set_reconstruction_coef > 0.0
+            and getattr(args, "env_name", None) == "MEC"
+            and getattr(args, "mec_policy_arch", None) == "set"
+        )
         
         assert (self._use_popart and self._use_valuenorm) == False, ("self._use_popart and self._use_valuenorm can not be set True simultaneously")
         
@@ -49,6 +64,60 @@ class R_MAPPO():
             self.value_normalizer = ValueNorm(1, device=self.device)
         else:
             self.value_normalizer = None
+
+    def _normalize_advantages(self, advantages, active_masks, obs):
+        advantages_copy = advantages.copy()
+        advantages_copy[active_masks == 0.0] = np.nan
+        if not self._use_mec_rolewise_loss:
+            mean_advantages = np.nanmean(advantages_copy)
+            std_advantages = np.nanstd(advantages_copy)
+            return (
+                advantages - mean_advantages
+            ) / (std_advantages + 1e-5)
+
+        role_is_major = obs[..., 0:1] > 0.5
+        normalized = np.zeros_like(advantages)
+        for role_mask in (role_is_major, ~role_is_major):
+            role_values = np.where(role_mask, advantages_copy, np.nan)
+            role_mean = np.nanmean(role_values)
+            role_std = np.nanstd(role_values)
+            normalized = np.where(
+                role_mask,
+                (advantages - role_mean) / (role_std + 1e-5),
+                normalized,
+            )
+        return normalized
+
+    def _policy_action_loss(
+        self, surrogate, active_masks_batch, obs_batch
+    ):
+        if not self._use_mec_rolewise_loss:
+            if self._use_policy_active_masks:
+                return (
+                    surrogate * active_masks_batch
+                ).sum() / active_masks_batch.sum(), {}
+            return surrogate.mean(), {}
+
+        obs_batch_t = check(obs_batch).to(**self.tpdv)
+        is_major = (obs_batch_t[:, 0:1] > 0.5).float()
+        weights = (
+            active_masks_batch
+            if self._use_policy_active_masks
+            else torch.ones_like(active_masks_batch)
+        )
+        major_weights = weights * is_major
+        minor_weights = weights * (1.0 - is_major)
+        major_loss = (
+            surrogate * major_weights
+        ).sum() / major_weights.sum().clamp_min(1.0)
+        minor_loss = (
+            surrogate * minor_weights
+        ).sum() / minor_weights.sum().clamp_min(1.0)
+        role_losses = {
+            "major_policy_loss": major_loss.item(),
+            "minor_policy_loss": minor_loss.item(),
+        }
+        return 0.5 * (major_loss + minor_loss), role_losses
 
     def cal_value_loss(self, values, value_preds_batch, return_batch, active_masks_batch):
         """
@@ -132,19 +201,30 @@ class R_MAPPO():
         surr1 = imp_weights * adv_targ
         surr2 = torch.clamp(imp_weights, 1.0 - self.clip_param, 1.0 + self.clip_param) * adv_targ
 
-        if self._use_policy_active_masks:
-            policy_action_loss = (-torch.sum(torch.min(surr1, surr2),
-                                             dim=-1,
-                                             keepdim=True) * active_masks_batch).sum() / active_masks_batch.sum()
-        else:
-            policy_action_loss = -torch.sum(torch.min(surr1, surr2), dim=-1, keepdim=True).mean()
+        surrogate = -torch.sum(
+            torch.min(surr1, surr2), dim=-1, keepdim=True
+        )
+        policy_action_loss, role_losses = self._policy_action_loss(
+            surrogate, active_masks_batch, obs_batch
+        )
 
         policy_loss = policy_action_loss
+        reconstruction_loss = None
+        if self._use_mec_set_reconstruction:
+            reconstruction_loss = self.policy.mec_set_reconstruction_loss(
+                share_obs_batch
+            )
 
         self.policy.actor_optimizer.zero_grad()
 
         if update_actor:
-            (policy_loss - dist_entropy * self.entropy_coef).backward()
+            actor_loss = policy_loss - dist_entropy * self.entropy_coef
+            if reconstruction_loss is not None:
+                actor_loss = actor_loss + (
+                    self.mec_set_reconstruction_coef
+                    * reconstruction_loss
+                )
+            actor_loss.backward()
 
         if self._use_max_grad_norm:
             actor_grad_norm = nn.utils.clip_grad_norm_(self.policy.actor.parameters(), self.max_grad_norm)
@@ -154,6 +234,16 @@ class R_MAPPO():
         self.policy.actor_optimizer.step()
 
         # critic update
+        if getattr(
+            self.policy,
+            "recompute_values_after_actor_update",
+            False,
+        ):
+            values = self.policy.get_values(
+                share_obs_batch,
+                rnn_states_critic_batch,
+                masks_batch,
+            )
         value_loss = self.cal_value_loss(values, value_preds_batch, return_batch, active_masks_batch)
 
         self.policy.critic_optimizer.zero_grad()
@@ -167,7 +257,16 @@ class R_MAPPO():
 
         self.policy.critic_optimizer.step()
 
-        return value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights
+        return (
+            value_loss,
+            critic_grad_norm,
+            policy_loss,
+            dist_entropy,
+            actor_grad_norm,
+            imp_weights,
+            role_losses,
+            reconstruction_loss,
+        )
 
     def train(self, buffer, update_actor=True):
         """
@@ -182,11 +281,11 @@ class R_MAPPO():
         else:
             unnormalized_values = buffer.value_preds[:-1]
         advantages = buffer.returns[:-1] - unnormalized_values
-        advantages_copy = advantages.copy()
-        advantages_copy[buffer.active_masks[:-1] == 0.0] = np.nan
-        mean_advantages = np.nanmean(advantages_copy)
-        std_advantages = np.nanstd(advantages_copy)
-        advantages = (advantages - mean_advantages) / (std_advantages + 1e-5)
+        advantages = self._normalize_advantages(
+            advantages,
+            buffer.active_masks[:-1],
+            buffer.obs[:-1],
+        )
         
 
         train_info = {}
@@ -199,6 +298,11 @@ class R_MAPPO():
         train_info['ratio'] = 0
         train_info['approx_kl'] = 0
         train_info['clip_fraction'] = 0
+        if self._use_mec_set_reconstruction:
+            train_info["mec_set_reconstruction_loss"] = 0
+        if self._use_mec_rolewise_loss:
+            train_info["major_policy_loss"] = 0
+            train_info["minor_policy_loss"] = 0
 
         num_updates = 0
         for _ in range(self.ppo_epoch):
@@ -208,12 +312,18 @@ class R_MAPPO():
                 data_generator = buffer.recurrent_generator(advantages, self.num_mini_batch, self.data_chunk_length)
             elif self._use_naive_recurrent:
                 data_generator = buffer.naive_recurrent_generator(advantages, self.num_mini_batch)
+            elif self._use_grouped_policy_batches:
+                data_generator = (
+                    buffer.feed_forward_generator_transformer(
+                        advantages, self.num_mini_batch
+                    )
+                )
             else:
                 data_generator = buffer.feed_forward_generator(advantages, self.num_mini_batch)
 
             for sample in data_generator:
 
-                value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights \
+                value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights, role_losses, reconstruction_loss \
                     = self.ppo_update(sample, update_actor)
 
                 train_info['value_loss'] += value_loss.item()
@@ -234,6 +344,12 @@ class R_MAPPO():
                     .mean()
                     .item()
                 )
+                for key, value in role_losses.items():
+                    train_info[key] += value
+                if reconstruction_loss is not None:
+                    train_info[
+                        "mec_set_reconstruction_loss"
+                    ] += reconstruction_loss.item()
                 epoch_approx_kl += approx_kl
                 epoch_updates += 1
                 num_updates += 1

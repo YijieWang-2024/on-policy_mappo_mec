@@ -1,0 +1,146 @@
+schema_version: "3.0"
+name: v6_continuous_workload
+status: continuous_workload_balanced
+description: >
+  Continuous-workload MEC scenario for the finite-K major-minor controller.
+  Ground demand is modeled directly as a normalized workload field in
+  bits/(m^2 slot), not as finite devices, packet probabilities, or per-device
+  bandwidth. The target regime is access-limited, compute-aware, and
+  backhaul-geometry-sensitive without hard backhaul outages.
+
+base:
+  seed: 20260604
+  slot_length_s: 1.0
+  episode_horizon_slots: 200
+  discount_gamma: 0.99
+
+env:
+  fleet_size_k: 16
+  region:
+    lx_m: 6000.0
+    ly_m: 6000.0
+  slot_timing:
+    service_position: mid_move
+  hap:
+    altitude_m: 1500.0
+    velocity_max_mps: 30.0
+    initial_xy_m:
+      generator: swarm_centroid
+    queue_max_bits: 300000000.0
+    initial_queue_bits: 0.0
+    cpu_frequency_hz: 45000000000.0
+    static_power_w: 500.0
+    flight_energy_model: fan_2026_drag_power
+    wind_speed_mps: 20.0
+    air_density_kg_per_m3: 0.53
+    drag_coefficient: 0.05
+    speed_smoothing_eps_mps: 0.1
+  uav:
+    altitude_m: 300.0
+    velocity_max_mps: 40.0
+    queue_max_bits: 120000000.0
+    cpu_frequency_hz: 2000000000.0
+    initial_xy_m:
+      generator: cluster
+      cluster_frac: 0.10
+      center_frac: [0.85, 0.85]
+    initial_deploy:
+      random_centroid: true
+      centroid_frac_range: [[0.3, 0.7], [0.3, 0.7]]
+      grid_side_m: 1000.0
+    initial_queue_bits: 0.0
+
+demand:
+  process:
+    model: random_walk_hotspot
+    label: static_random_hotspot
+    initial_center_frac: [0.5, 0.5]
+    initial_center_frac_range: [[0.3, 0.7], [0.3, 0.7]]
+    speed_mps: 0.0
+    heading: uniform_per_episode
+    noise_std_m: 0.0
+    boundary: reflect
+  markov_chain:
+    states: [static_random_hotspot]
+    initial_state: static_random_hotspot
+    transition_matrix: [[1.0]]
+  workload_field:
+    model: normalized_background_gaussian
+    total_workload_bits_per_slot: 150000000.0
+    hotspot_fraction: 0.7
+    hotspot_sigma_m: 700.0
+
+numerics:
+  spatial_integral:
+    method: midpoint_grid
+    grid_shape: [81, 81]
+  eps: 1.0e-12
+  internal_power_scale: linear
+
+communication:
+  noise:
+    thermal_noise_psd_dbm_per_hz: -174.0
+    receiver_noise_figure_db: 9.0
+  access:
+    carrier_frequency_hz: 2400000000.0
+    bandwidth_allocation: fixed_total
+    total_bandwidth_hz: 40000000.0
+    user_max_power_w: 0.1
+    user_target_psd_w_per_hz: 1.0e-8
+    snr_threshold_linear: 6.309573444801933
+    smooth_service_temperature_tau: 0.2
+    los_probability:
+      model: al_hourani
+      a1: 9.61
+      a2: 0.16
+    pathloss:
+      model: fspl_with_los_nlos_excess_loss
+      reference_loss_linear_at_1m: 10106.474906715503
+      alpha_los: 2.0
+      alpha_nlos: 2.0
+      eta_los_linear: 1.258925412
+      eta_nlos_linear: 100.0
+  backhaul:
+    link_model: continuous_mmwave
+    mmwave:
+      carrier_frequency_hz: 28000000000.0
+      bandwidth_allocation: fixed_total
+      total_bandwidth_hz: 400000000.0
+      tx_power_dbm: 27.0
+      antenna_gain_total_db: 15.0
+      pathloss_exponent: 2.2
+      kappa_o2_db_per_km: 0.0
+      noise_figure_db: 8.0
+      use_hard_cutoff: false
+
+compute:
+  cycles_per_bit: 500.0
+  kappa_uav: 1.0e-28
+  kappa_hap: 1.0e-28
+
+energy:
+  uav_rotary_wing:
+    p0_blade_profile_w: 79.86
+    p_induced_w: 88.63
+    u_tip_mps: 120.0
+    v0_hover_mps: 4.03
+    fuselage_drag_ratio: 0.6
+    air_density_kg_per_m3: 1.225
+    rotor_solidity: 0.05
+    rotor_disc_area_m2: 0.503
+
+cost:
+  lambdas:
+    queue: 1.0
+    src: 5.0
+    ovf: 5.0
+    energy: 0.03
+    safety: 0.5
+  references:
+    loss_ref_bits_per_slot: 100000000.0
+    energy_ref_j_per_slot: 10000.0
+  safety:
+    min_uav_distance_m: 30.0
+
+normalization:
+  demand_state_encoding: center_velocity

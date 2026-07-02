@@ -1,0 +1,78 @@
+{
+  "flat": {
+    "new": {
+      "eval": {
+        "best_reward": -970.4602661132812,
+        "best_step": 1495200,
+        "first_step": 100800,
+        "last_reward": -970.4602661132812,
+        "last_step": 1495200,
+        "points": 15
+      },
+      "train": {
+        "best_reward": -959.1310424804688,
+        "best_step": 1047200,
+        "first_step": 5600,
+        "last_reward": -1058.8345947265625,
+        "last_step": 1484000,
+        "points": 45
+      }
+    },
+    "old": {
+      "eval": {
+        "best_reward": -910.7025146484375,
+        "best_step": 1495200,
+        "first_step": 100800,
+        "last_reward": -910.7025146484375,
+        "last_step": 1495200,
+        "points": 15
+      },
+      "train": {
+        "best_reward": -900.3800659179688,
+        "best_step": 1047200,
+        "first_step": 5600,
+        "last_reward": -984.181396484375,
+        "last_step": 1484000,
+        "points": 45
+      }
+    }
+  },
+  "mean": {
+    "new": {
+      "eval": {
+        "best_reward": -704.14453125,
+        "best_step": 1209600,
+        "first_step": 100800,
+        "last_reward": -754.5023803710938,
+        "last_step": 1495200,
+        "points": 15
+      },
+      "train": {
+        "best_reward": -730.146728515625,
+        "best_step": 1013600,
+        "first_step": 5600,
+        "last_reward": -769.8424682617188,
+        "last_step": 1484000,
+        "points": 45
+      }
+    },
+    "old": {
+      "eval": {
+        "best_reward": -720.1961059570312,
+        "best_step": 1108800,
+        "first_step": 100800,
+        "last_reward": -775.3276977539062,
+        "last_step": 1495200,
+        "points": 15
+      },
+      "train": {
+        "best_reward": -759.2420654296875,
+        "best_step": 644000,
+        "first_step": 5600,
+        "last_reward": -855.5487670898438,
+        "last_step": 1484000,
+        "points": 45
+      }
+    }
+  }
+}

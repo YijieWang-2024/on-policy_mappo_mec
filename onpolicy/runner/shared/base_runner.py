@@ -1,9 +1,12 @@
 import wandb
 import os
+import json
 import numpy as np
 import torch
+from pathlib import Path
 from tensorboardX import SummaryWriter
 from onpolicy.utils.shared_buffer import SharedReplayBuffer
+from onpolicy.utils.run_config import save_run_config
 
 def _t2n(x):
     """Convert torch tensor to a numpy array."""
@@ -46,6 +49,10 @@ class Runner(object):
         self.use_eval = self.all_args.use_eval
         self.eval_interval = self.all_args.eval_interval
         self.log_interval = self.all_args.log_interval
+        self.save_step_checkpoints = getattr(
+            self.all_args, "save_step_checkpoints", False
+        )
+        self.best_eval_reward = -np.inf
 
         # dir
         self.model_dir = self.all_args.model_dir
@@ -68,12 +75,23 @@ class Runner(object):
             if not os.path.exists(self.save_dir):
                 os.makedirs(self.save_dir)
 
+        if not self.use_render:
+            save_run_config(
+                self.all_args,
+                self.run_dir,
+                self.save_dir,
+                num_agents=self.num_agents,
+            )
+
         if self.algorithm_name == "mat" or self.algorithm_name == "mat_dec":
             from onpolicy.algorithms.mat.mat_trainer import MATTrainer as TrainAlgo
             from onpolicy.algorithms.mat.algorithm.transformer_policy import TransformerPolicy as Policy
         else:
             from onpolicy.algorithms.r_mappo.r_mappo import R_MAPPO as TrainAlgo
             from onpolicy.algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
+            if self.env_name == "MEC":
+                # major-minor shared-parameter actor (hub + K shared UAVs); same R_MAPPO trainer
+                from onpolicy.algorithms.mec.mec_policy import MECPolicy as Policy
 
         share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else self.envs.observation_space[0]
 
@@ -84,17 +102,41 @@ class Runner(object):
         # policy network
         if self.algorithm_name == "mat" or self.algorithm_name == "mat_dec":
             self.policy = Policy(self.all_args, self.envs.observation_space[0], share_observation_space, self.envs.action_space[0], self.num_agents, device = self.device)
+        elif self.env_name == "MEC":
+            self.policy = Policy(
+                self.all_args,
+                self.envs.observation_space[0],
+                share_observation_space,
+                self.envs.action_space[0],
+                device=self.device,
+                num_agents=self.num_agents,
+            )
         else:
             self.policy = Policy(self.all_args, self.envs.observation_space[0], share_observation_space, self.envs.action_space[0], device = self.device)
 
-        if self.model_dir is not None:
-            self.restore(self.model_dir)
+        pretrained_actor = getattr(
+            self.all_args, "mec_set_pretrained_actor", None
+        )
+        if self.env_name == "MEC" and pretrained_actor:
+            actor_state = torch.load(
+                str(pretrained_actor), map_location=self.device
+            )
+            loaded_keys = self.policy.load_set_pretrained_actor(
+                actor_state
+            )
+            print(
+                "loaded MEC Set pretrained representation "
+                f"from {pretrained_actor} ({len(loaded_keys)} tensors)"
+            )
 
         # algorithm
         if self.algorithm_name == "mat" or self.algorithm_name == "mat_dec":
             self.trainer = TrainAlgo(self.all_args, self.policy, self.num_agents, device = self.device)
         else:
             self.trainer = TrainAlgo(self.all_args, self.policy, device = self.device)
+
+        if self.model_dir is not None:
+            self.restore(self.model_dir)
         
         # buffer
         self.buffer = SharedReplayBuffer(self.all_args,
@@ -134,26 +176,122 @@ class Runner(object):
         self.buffer.after_update()
         return train_infos
 
-    def save(self, episode=0):
-        """Save policy's actor and critic networks."""
+    def _save_training_state(self, target_dir, total_num_steps=None):
+        """Save optimizer/value-normalizer state for resumable checkpoints."""
+        if self.algorithm_name in ("mat", "mat_dec"):
+            return
+        state = {
+            "total_num_steps": total_num_steps,
+            "actor_optimizer": self.trainer.policy.actor_optimizer.state_dict(),
+            "critic_optimizer": self.trainer.policy.critic_optimizer.state_dict(),
+        }
+        if self.trainer.value_normalizer is not None:
+            state["value_normalizer"] = (
+                self.trainer.value_normalizer.state_dict()
+            )
+        torch.save(state, str(Path(target_dir) / "trainer_state.pt"))
+
+    def _save_models_to(self, target_dir, episode=0, total_num_steps=None):
+        target_dir = Path(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
         if self.algorithm_name == "mat" or self.algorithm_name == "mat_dec":
-            self.policy.save(self.save_dir, episode)
+            self.policy.save(str(target_dir), episode)
         else:
             policy_actor = self.trainer.policy.actor
-            torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor.pt")
+            torch.save(
+                policy_actor.state_dict(), str(target_dir / "actor.pt")
+            )
             policy_critic = self.trainer.policy.critic
-            torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic.pt")
+            torch.save(
+                policy_critic.state_dict(), str(target_dir / "critic.pt")
+            )
+            self._save_training_state(target_dir, total_num_steps)
+        save_run_config(
+            self.all_args,
+            self.run_dir,
+            target_dir,
+            num_agents=self.num_agents,
+        )
+
+    def save(self, episode=0, total_num_steps=None):
+        """Save latest models and optionally retain a numbered checkpoint."""
+        self._save_models_to(
+            self.save_dir, episode=episode, total_num_steps=total_num_steps
+        )
+        if self.save_step_checkpoints and total_num_steps is not None:
+            checkpoint_dir = (
+                Path(self.save_dir)
+                / "checkpoints"
+                / f"step_{int(total_num_steps):012d}"
+            )
+            self._save_models_to(
+                checkpoint_dir,
+                episode=episode,
+                total_num_steps=total_num_steps,
+            )
+
+    def maybe_save_best(self, eval_reward, total_num_steps):
+        """Keep the checkpoint with the highest fixed-validation reward."""
+        if eval_reward is None or not np.isfinite(eval_reward):
+            return False
+        if eval_reward <= self.best_eval_reward:
+            return False
+        self.best_eval_reward = float(eval_reward)
+        best_dir = Path(self.save_dir) / "best"
+        self._save_models_to(best_dir, total_num_steps=total_num_steps)
+        metadata = {
+            "selection_metric": "eval_average_episode_rewards",
+            "selection_mode": "max",
+            "selection_split": "validation",
+            "eval_reward": self.best_eval_reward,
+            "total_num_steps": int(total_num_steps),
+            "validation_seed": int(
+                getattr(self.all_args, "eval_seed", 1000)
+            ),
+            "validation_episodes": int(self.all_args.eval_episodes),
+        }
+        with (best_dir / "best_checkpoint.json").open(
+            "w", encoding="utf-8"
+        ) as f:
+            json.dump(metadata, f, indent=2, sort_keys=True)
+            f.write("\n")
+        return True
 
     def restore(self, model_dir):
         """Restore policy's networks from a saved model."""
+        model_dir = Path(model_dir)
         if self.algorithm_name == "mat" or self.algorithm_name == "mat_dec":
-            self.policy.restore(model_dir)
+            self.policy.restore(str(model_dir))
         else:
-            policy_actor_state_dict = torch.load(str(self.model_dir) + '/actor.pt')
+            policy_actor_state_dict = torch.load(
+                str(model_dir / "actor.pt"), map_location=self.device
+            )
             self.policy.actor.load_state_dict(policy_actor_state_dict)
             if not self.all_args.use_render:
-                policy_critic_state_dict = torch.load(str(self.model_dir) + '/critic.pt')
+                policy_critic_state_dict = torch.load(
+                    str(model_dir / "critic.pt"), map_location=self.device
+                )
                 self.policy.critic.load_state_dict(policy_critic_state_dict)
+            trainer_state_path = model_dir / "trainer_state.pt"
+            if trainer_state_path.exists() and not self.all_args.use_render:
+                state = torch.load(
+                    str(trainer_state_path), map_location=self.device
+                )
+                if "actor_optimizer" in state:
+                    self.trainer.policy.actor_optimizer.load_state_dict(
+                        state["actor_optimizer"]
+                    )
+                if "critic_optimizer" in state:
+                    self.trainer.policy.critic_optimizer.load_state_dict(
+                        state["critic_optimizer"]
+                    )
+                if (
+                    self.trainer.value_normalizer is not None
+                    and "value_normalizer" in state
+                ):
+                    self.trainer.value_normalizer.load_state_dict(
+                        state["value_normalizer"]
+                    )
 
     def log_train(self, train_infos, total_num_steps):
         """
@@ -165,7 +303,7 @@ class Runner(object):
             if self.use_wandb:
                 wandb.log({k: v}, step=total_num_steps)
             else:
-                self.writter.add_scalars(k, {k: v}, total_num_steps)
+                self.writter.add_scalar(k, v, total_num_steps)
 
     def log_env(self, env_infos, total_num_steps):
         """
@@ -178,4 +316,4 @@ class Runner(object):
                 if self.use_wandb:
                     wandb.log({k: np.mean(v)}, step=total_num_steps)
                 else:
-                    self.writter.add_scalars(k, {k: np.mean(v)}, total_num_steps)
+                    self.writter.add_scalar(k, np.mean(v), total_num_steps)

@@ -67,10 +67,40 @@ class MPERunner(Runner):
         self.warmup()
         start = time.time()
         episodes = self.num_env_steps // self.episode_length // self.n_rollout_threads
+        freeze_encoder_updates = int(
+            getattr(
+                self.all_args,
+                "mec_set_freeze_pretrained_encoder_updates",
+                0,
+            )
+            or 0
+        )
+        encoder_frozen = None
 
         for episode in range(episodes):
+            if self.env_name == "MEC" and freeze_encoder_updates > 0:
+                should_train_encoder = episode >= freeze_encoder_updates
+                if encoder_frozen is not (not should_train_encoder):
+                    changed = self.trainer.policy.set_set_encoder_trainable(
+                        should_train_encoder
+                    )
+                    if changed:
+                        state = (
+                            "unfrozen"
+                            if should_train_encoder
+                            else "frozen"
+                        )
+                        print(
+                            "MEC Set actor population encoder "
+                            f"{state} at PPO update {episode}"
+                        )
+                    encoder_frozen = not should_train_encoder
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)
+            if getattr(self.all_args, "use_entropy_anneal", False):
+                frac = max(0.0, 1.0 - episode / max(1, episodes))
+                emin = getattr(self.all_args, "entropy_coef_min", 0.0)
+                self.trainer.entropy_coef = emin + (self.all_args.entropy_coef - emin) * frac
 
             for step in range(self.episode_length):
                 rollout = self.collect(step)
@@ -83,8 +113,9 @@ class MPERunner(Runner):
                 (episode + 1) * self.episode_length * self.n_rollout_threads
             )
 
-            if episode % self.save_interval == 0 or episode == episodes - 1:
-                self.save()
+            update = episode + 1
+            if update % self.save_interval == 0 or episode == episodes - 1:
+                self.save(episode=episode, total_num_steps=total_num_steps)
 
             if episode % self.log_interval == 0:
                 elapsed = time.time() - start
@@ -112,8 +143,16 @@ class MPERunner(Runner):
                 self.log_train(train_infos, total_num_steps)
                 self.log_env(env_infos, total_num_steps)
 
-            if episode % self.eval_interval == 0 and self.use_eval:
-                self.eval(total_num_steps)
+            if (
+                self.use_eval
+                and (update % self.eval_interval == 0 or episode == episodes - 1)
+            ):
+                eval_reward = self.eval(total_num_steps)
+                if self.maybe_save_best(eval_reward, total_num_steps):
+                    print(
+                        "new best fixed-validation reward "
+                        f"{eval_reward:.6f} at {total_num_steps} steps"
+                    )
 
     def warmup(self):
         obs, _ = self.envs.reset(seed=self.all_args.seed)
@@ -212,29 +251,54 @@ class MPERunner(Runner):
 
     @torch.no_grad()
     def eval(self, total_num_steps):
-        obs, _ = self.eval_envs.reset(seed=self.all_args.seed * 50000)
-        rnn_states = np.zeros(
-            (self.n_eval_rollout_threads, *self.buffer.rnn_states.shape[2:]),
-            dtype=np.float32,
-        )
-        masks = np.ones(
-            (self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32
-        )
-        episode_rewards = []
-
-        for _ in range(self.episode_length):
-            rnn_states, actions_env = self._eval_actions(
-                obs, rnn_states, masks, self.eval_envs
+        target_episodes = int(self.all_args.eval_episodes)
+        completed_rewards = []
+        batch = 0
+        while len(completed_rewards) < target_episodes:
+            batch_seed = (
+                int(getattr(self.all_args, "eval_seed", 1000))
+                + batch * self.n_eval_rollout_threads * 1000
             )
-            obs, rewards, terminated, truncated, _ = self.eval_envs.step(actions_env)
-            episode_rewards.append(rewards)
-            episode_dones = terminated | truncated
-            rnn_states[episode_dones] = 0
-            masks = (~episode_dones)[..., None].astype(np.float32)
+            obs, _ = self.eval_envs.reset(seed=batch_seed)
+            rnn_states = np.zeros(
+                (
+                    self.n_eval_rollout_threads,
+                    *self.buffer.rnn_states.shape[2:],
+                ),
+                dtype=np.float32,
+            )
+            masks = np.ones(
+                (
+                    self.n_eval_rollout_threads,
+                    self.num_agents,
+                    1,
+                ),
+                dtype=np.float32,
+            )
+            episode_rewards = []
 
-        average_reward = np.mean(np.sum(np.asarray(episode_rewards), axis=0))
+            for _ in range(self.episode_length):
+                rnn_states, actions_env = self._eval_actions(
+                    obs, rnn_states, masks, self.eval_envs
+                )
+                obs, rewards, terminated, truncated, _ = self.eval_envs.step(
+                    actions_env
+                )
+                episode_rewards.append(rewards)
+                episode_dones = terminated | truncated
+                rnn_states[episode_dones] = 0
+                masks = (~episode_dones)[..., None].astype(np.float32)
+
+            batch_rewards = np.sum(np.asarray(episode_rewards), axis=0)
+            completed_rewards.extend(
+                np.mean(batch_rewards, axis=1).tolist()
+            )
+            batch += 1
+
+        average_reward = float(np.mean(completed_rewards[:target_episodes]))
         print(f"eval average episode rewards of agent: {average_reward}")
         self.log_env({"eval_average_episode_rewards": [average_reward]}, total_num_steps)
+        return average_reward
 
     @torch.no_grad()
     def render(self):
