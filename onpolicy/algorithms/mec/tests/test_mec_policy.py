@@ -36,17 +36,19 @@ def _args(**overrides):
 
 def test_mec_env_adapter_and_team_state_shapes():
     env = MECEnv(_args())
-    obs, _ = env.reset(seed=1)
+    obs, share, _ = env.reset(seed=1)
     assert obs.shape == (5, AGENT_OBS_DIM)
     assert env.action_space[0].shape == (ACT_DIM,)
 
-    share = repeat_team_state(obs[None, ...])
-    assert share.shape == (1, 5, 13 + 4 * 3)
-    np.testing.assert_allclose(share[:, 0], share[:, -1])
+    expected_share = repeat_team_state(obs)
+    assert share.shape == (5, 13 + 4 * 3)
+    np.testing.assert_allclose(share, expected_share)
+    np.testing.assert_allclose(share[0], share[-1])
 
     action = np.zeros((env.num_agents, ACT_DIM), dtype=np.float32)
-    next_obs, rewards, terminated, truncated, infos = env.step(action)
+    next_obs, next_share, rewards, terminated, truncated, infos = env.step(action)
     assert next_obs.shape == obs.shape
+    assert next_share.shape == share.shape
     assert len(rewards) == env.num_agents
     assert terminated == [False] * env.num_agents
     assert isinstance(truncated[0], bool)
@@ -58,8 +60,7 @@ def test_mec_policy_mean_and_flat_forward_shapes():
         args = _args(mec_policy_arch=arch)
         env = MECEnv(args)
         args.num_agents = env.num_agents
-        obs, _ = env.reset(seed=2)
-        share = repeat_team_state(obs[None, ...])[0]
+        obs, share, _ = env.reset(seed=2)
         policy = MECPolicy(
             args,
             env.observation_space[0],
@@ -94,7 +95,7 @@ def test_beta_head_initializes_to_requested_distribution():
         torch.device("cpu"),
         num_agents=env.num_agents,
     )
-    obs, _ = env.reset(seed=3)
+    obs, _, _ = env.reset(seed=3)
     features = policy.actor._features(obs)
     _, _, beta_dist = policy.actor._dists(features)
     alpha = beta_dist.concentration1[1:]

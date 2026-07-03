@@ -11,7 +11,6 @@ import torch
 
 from onpolicy.config import get_config
 from onpolicy.envs.mec.MEC_env import ACT_DIM, MECEnv
-from onpolicy.envs.mec.observation import repeat_team_state
 from onpolicy.algorithms.mec.mec_policy import MECPolicy
 from onpolicy.utils.run_config import apply_saved_args, explicit_option_names, load_model_config
 
@@ -59,6 +58,35 @@ def _load_policy(args, env):
     return policy
 
 
+def _load_obs_norm(args):
+    if not getattr(args, "use_obs_norm", False):
+        return None
+    stats_path = Path(args.model_dir or "") / "vec_normalize.npz"
+    if not stats_path.exists():
+        raise FileNotFoundError(
+            f"--use_obs_norm is enabled but {stats_path} was not found"
+        )
+    data = np.load(stats_path, allow_pickle=False)
+    return {
+        "mean": np.asarray(data["obs_mean"], dtype=np.float64),
+        "var": np.asarray(data["obs_var"], dtype=np.float64),
+        "mask": np.asarray(data["obs_mask"], dtype=bool),
+        "clip": float(np.asarray(data["clip_obs"])),
+        "epsilon": float(np.asarray(data["epsilon"])),
+    }
+
+
+def _normalize_obs(obs, norm):
+    if norm is None:
+        return obs
+    obs = np.asarray(obs, dtype=np.float32)
+    out = obs.copy()
+    normed = (obs - norm["mean"]) / np.sqrt(norm["var"] + norm["epsilon"])
+    normed = np.clip(normed, -norm["clip"], norm["clip"])
+    out[..., norm["mask"]] = normed[..., norm["mask"]]
+    return out.astype(np.float32)
+
+
 def _heuristic_action(env):
     st = env.env.state
     center = st.demand_center_m
@@ -86,9 +114,10 @@ def _policy_action(policy, env, obs, rnn_states, masks):
     return actions.cpu().numpy(), rnn_states
 
 
-def _episode(args, policy, seed):
+def _episode(args, policy, seed, obs_norm=None):
     env = MECEnv(args)
-    obs, _ = env.reset(seed=seed)
+    obs, _, _ = env.reset(seed=seed)
+    policy_obs = _normalize_obs(obs, obs_norm)
     rnn_states = np.zeros((env.num_agents, args.recurrent_N, args.hidden_size), dtype=np.float32)
     masks = np.ones((env.num_agents, 1), dtype=np.float32)
     total_reward = 0.0
@@ -96,7 +125,7 @@ def _episode(args, policy, seed):
 
     for _ in range(env.env.horizon):
         if args.mec_eval_controller == "policy":
-            action, rnn_states = _policy_action(policy, env, obs, rnn_states, masks)
+            action, rnn_states = _policy_action(policy, env, policy_obs, rnn_states, masks)
         elif args.mec_eval_controller == "random":
             action = np.random.default_rng(seed).uniform(-1, 1, (env.num_agents, ACT_DIM))
         elif args.mec_eval_controller == "hover":
@@ -104,7 +133,8 @@ def _episode(args, policy, seed):
             action[1:, 2] = 0.5
         else:
             action = _heuristic_action(env)
-        obs, rewards, terminated, truncated, infos = env.step(action)
+        obs, _, rewards, terminated, truncated, infos = env.step(action)
+        policy_obs = _normalize_obs(obs, obs_norm)
         total_reward += float(rewards[0][0])
         last_info = infos[0]
         done = np.asarray(terminated) | np.asarray(truncated)
@@ -131,9 +161,10 @@ def main(argv=None):
         args.mec_episode_horizon = probe.env.horizon
     probe.close()
     policy = _load_policy(args, MECEnv(args)) if args.mec_eval_controller == "policy" else None
+    obs_norm = _load_obs_norm(args) if args.mec_eval_controller == "policy" else None
 
     rows = [
-        _episode(args, policy, args.mec_eval_seed + i * args.mec_eval_seed_stride)
+        _episode(args, policy, args.mec_eval_seed + i * args.mec_eval_seed_stride, obs_norm)
         for i in range(args.mec_eval_episodes)
     ]
     mean = {k: float(np.mean([row[k] for row in rows])) for k in rows[0]}

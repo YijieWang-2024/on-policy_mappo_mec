@@ -182,6 +182,12 @@ def get_config():
     parser.add_argument("--env_name", type=str, default='MPE', choices=["MPE", "MEC"], help="specify the name of environment")
     parser.add_argument("--use_obs_instead_of_state", action='store_true',
                         default=False, help="Whether to use global state or concatenated obs")
+    parser.add_argument("--use_obs_norm", action='store_true',
+                        default=False, help="normalize vector-env obs and share_obs before rollout storage")
+    parser.add_argument("--obs_norm_clip", type=float, default=10.0,
+                        help="clip range for obs/share_obs normalization")
+    parser.add_argument("--obs_norm_epsilon", type=float, default=1e-8,
+                        help="epsilon for obs/share_obs normalization")
 
     # replay buffer parameters
     parser.add_argument("--episode_length", type=int,

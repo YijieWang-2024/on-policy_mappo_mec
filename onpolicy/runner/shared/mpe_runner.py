@@ -67,34 +67,8 @@ class MPERunner(Runner):
         self.warmup()
         start = time.time()
         episodes = self.num_env_steps // self.episode_length // self.n_rollout_threads
-        freeze_encoder_updates = int(
-            getattr(
-                self.all_args,
-                "mec_set_freeze_pretrained_encoder_updates",
-                0,
-            )
-            or 0
-        )
-        encoder_frozen = None
 
         for episode in range(episodes):
-            if self.env_name == "MEC" and freeze_encoder_updates > 0:
-                should_train_encoder = episode >= freeze_encoder_updates
-                if encoder_frozen is not (not should_train_encoder):
-                    changed = self.trainer.policy.set_set_encoder_trainable(
-                        should_train_encoder
-                    )
-                    if changed:
-                        state = (
-                            "unfrozen"
-                            if should_train_encoder
-                            else "frozen"
-                        )
-                        print(
-                            "MEC Set actor population encoder "
-                            f"{state} at PPO update {episode}"
-                        )
-                    encoder_frozen = not should_train_encoder
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)
             if getattr(self.all_args, "use_entropy_anneal", False):

@@ -17,8 +17,17 @@ import setproctitle
 import torch
 
 from onpolicy.config import get_config
-from onpolicy.envs.env_wrappers import DummyVecEnv, SubprocVecEnv
+from onpolicy.envs.env_wrappers import (
+    ShareDummyVecEnv,
+    ShareSubprocVecEnv,
+    ShareVecNormalize,
+)
 from onpolicy.envs.mec.MEC_env import MECEnv
+from onpolicy.envs.mec.observation import (
+    PHYSICAL_PUBLIC_STATE_DIM,
+    PUBLIC_STATE_DIM,
+    RESOURCE_CONTEXT_SLICE,
+)
 
 
 def _make_env_fns(all_args, base_seed):
@@ -36,15 +45,51 @@ def _make_env_fns(all_args, base_seed):
 def make_train_env(all_args):
     fn = _make_env_fns(all_args, all_args.seed)
     if all_args.n_rollout_threads == 1:
-        return DummyVecEnv([fn(0)])
-    return SubprocVecEnv([fn(i) for i in range(all_args.n_rollout_threads)])
+        envs = ShareDummyVecEnv([fn(0)])
+    else:
+        envs = ShareSubprocVecEnv([fn(i) for i in range(all_args.n_rollout_threads)])
+    return _maybe_wrap_obs_norm(all_args, envs, training=True)
 
 
 def make_eval_env(all_args):
     fn = _make_env_fns(all_args, all_args.seed * 50000)
     if all_args.n_eval_rollout_threads == 1:
-        return DummyVecEnv([fn(0)])
-    return SubprocVecEnv([fn(i) for i in range(all_args.n_eval_rollout_threads)])
+        envs = ShareDummyVecEnv([fn(0)])
+    else:
+        envs = ShareSubprocVecEnv([fn(i) for i in range(all_args.n_eval_rollout_threads)])
+    return _maybe_wrap_obs_norm(all_args, envs, training=False)
+
+
+def _mec_norm_masks(envs):
+    obs_mask = np.ones(envs.observation_space[0].shape, dtype=bool)
+    obs_mask[0] = False
+    obs_mask[RESOURCE_CONTEXT_SLICE] = False
+
+    share_obs_mask = np.ones(envs.share_observation_space[0].shape, dtype=bool)
+    share_obs_mask[PHYSICAL_PUBLIC_STATE_DIM:PUBLIC_STATE_DIM] = False
+    return obs_mask, share_obs_mask
+
+
+def _maybe_wrap_obs_norm(all_args, envs, *, training):
+    if not getattr(all_args, "use_obs_norm", False):
+        return envs
+    obs_mask, share_obs_mask = _mec_norm_masks(envs)
+    envs = ShareVecNormalize(
+        envs,
+        training=training,
+        clip_obs=all_args.obs_norm_clip,
+        epsilon=all_args.obs_norm_epsilon,
+        obs_mask=obs_mask,
+        share_obs_mask=share_obs_mask,
+        share_obs_unique=True,
+    )
+    if all_args.model_dir:
+        stats_path = Path(all_args.model_dir) / "vec_normalize.npz"
+        if stats_path.exists():
+            envs.load_vec_normalize(stats_path, training=training)
+        else:
+            print(f"obs normalization requested but {stats_path} was not found")
+    return envs
 
 
 def parse_args(args, parser):

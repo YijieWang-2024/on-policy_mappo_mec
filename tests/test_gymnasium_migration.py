@@ -1,10 +1,11 @@
 import unittest
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 import gymnasium as gym
 import numpy as np
 
-from onpolicy.envs.env_wrappers import DummyVecEnv
+from onpolicy.envs.env_wrappers import DummyVecEnv, ShareDummyVecEnv, ShareVecNormalize
 from onpolicy.envs.mpe.MPE_env import MPEEnv
 from onpolicy.utils.shared_buffer import SharedReplayBuffer
 
@@ -27,6 +28,28 @@ class OneStepTruncationEnv:
             [True],
             [{"step": "final"}],
         )
+
+    def close(self):
+        pass
+
+
+class OneStepShareTruncationEnv:
+    def __init__(self):
+        obs_space = gym.spaces.Box(-np.inf, np.inf, shape=(4,), dtype=np.float32)
+        share_space = gym.spaces.Box(-np.inf, np.inf, shape=(5,), dtype=np.float32)
+        self.observation_space = [obs_space]
+        self.share_observation_space = [share_space]
+        self.action_space = [gym.spaces.Box(-1, 1, shape=(1,), dtype=np.float32)]
+
+    def reset(self, *, seed=None, options=None):
+        obs = np.array([[1.0, 2.0, 100.0, 200.0]], dtype=np.float32)
+        share_obs = np.array([[3.0, 4.0, 50.0, 60.0, 70.0]], dtype=np.float32)
+        return obs, share_obs, {"seed": seed}
+
+    def step(self, action):
+        obs = np.array([[1.0, 9.0, 100.0, 200.0]], dtype=np.float32)
+        share_obs = np.array([[5.0, 6.0, 50.0, 60.0, 70.0]], dtype=np.float32)
+        return obs, share_obs, [[1.0]], [False], [True], [{"step": "final"}]
 
     def close(self):
         pass
@@ -109,6 +132,50 @@ class GymnasiumMigrationTest(unittest.TestCase):
         self.assertEqual(obs[0, 0, 0], 0)
         self.assertEqual(infos[0]["final_observation"][0, 0], 9)
         self.assertEqual(infos[0]["final_info"][0]["step"], "final")
+
+    def test_share_vector_autoreset_preserves_final_share_observation(self):
+        envs = ShareDummyVecEnv([OneStepShareTruncationEnv])
+        obs, share_obs, _ = envs.reset(seed=3)
+        self.assertEqual(obs[0, 0, 1], 2)
+        self.assertEqual(share_obs[0, 0, 1], 4)
+
+        obs, share_obs, _, terminated, truncated, infos = envs.step(
+            np.zeros((1, 1, 1), dtype=np.float32)
+        )
+        self.assertFalse(terminated[0, 0])
+        self.assertTrue(truncated[0, 0])
+        self.assertEqual(obs[0, 0, 1], 2)
+        self.assertEqual(share_obs[0, 0, 1], 4)
+        self.assertEqual(infos[0]["final_observation"][0, 1], 9)
+        self.assertEqual(infos[0]["final_share_observation"][0, 1], 6)
+
+    def test_share_vec_normalize_masks_static_dims_and_round_trips_stats(self):
+        envs = ShareVecNormalize(
+            ShareDummyVecEnv([OneStepShareTruncationEnv]),
+            obs_mask=np.array([False, True, False, False]),
+            share_obs_mask=np.array([True, True, False, False, False]),
+            share_obs_unique=True,
+        )
+        obs, share_obs, _ = envs.reset(seed=3)
+        self.assertEqual(obs[0, 0, 0], 1)
+        self.assertEqual(obs[0, 0, 2], 100)
+        self.assertEqual(share_obs[0, 0, 2], 50)
+
+        _, _, _, _, _, infos = envs.step(np.zeros((1, 1, 1), dtype=np.float32))
+        self.assertEqual(infos[0]["final_observation"][0, 0], 1)
+        self.assertEqual(infos[0]["final_observation"][0, 2], 100)
+        self.assertEqual(infos[0]["final_share_observation"][0, 2], 50)
+
+        with TemporaryDirectory() as tmp:
+            path = f"{tmp}/vec_normalize.npz"
+            envs.save_vec_normalize(path)
+            loaded = ShareVecNormalize(
+                ShareDummyVecEnv([OneStepShareTruncationEnv]),
+                training=False,
+            )
+            loaded.load_vec_normalize(path, training=False)
+            np.testing.assert_allclose(loaded.obs_rms.mean, envs.obs_rms.mean)
+            self.assertFalse(loaded.training)
 
     def test_truncation_bootstraps_but_termination_does_not(self):
         args = SimpleNamespace(

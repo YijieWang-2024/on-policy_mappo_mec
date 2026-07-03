@@ -22,6 +22,7 @@ from onpolicy.envs.mec.metrics import demand_matching_w1
 from onpolicy.envs.mec.observation import (
     AGENT_OBS_DIM,
     build_resource_context,
+    repeat_team_state,
     team_state_dim,
 )
 
@@ -65,7 +66,8 @@ class MECEnv:
     # ------------------------------------------------------------------ API
     def reset(self, seed: int | None = None, options=None):
         obs, _ = self.env.reset(seed=seed)
-        return self._agent_obs(obs), {}
+        obs_n = self._agent_obs(obs)
+        return obs_n, self._share_obs(obs_n), {}
 
     def step(self, actions):
         actions = np.asarray(actions, dtype=float).reshape(self.num_agents, ACT_DIM)
@@ -77,11 +79,12 @@ class MECEnv:
         }
         obs, reward, terminated, truncated, info = self.env.step(env_action)
         obs_n = self._agent_obs(obs)
+        share_obs_n = self._share_obs(obs_n)
         reward_n = [[float(reward)] for _ in range(self.num_agents)]
         terminated_n = [bool(terminated)] * self.num_agents          # always False (D3)
         truncated_n = [bool(truncated)] * self.num_agents
         info_n = self._agent_infos(info, float(reward))
-        return obs_n, reward_n, terminated_n, truncated_n, info_n
+        return obs_n, share_obs_n, reward_n, terminated_n, truncated_n, info_n
 
     def seed(self, seed=None):
         if seed is not None:
@@ -104,6 +107,9 @@ class MECEnv:
         for i in range(self.k):
             rows[i + 1] = np.concatenate([[0.0], uav[i], public])
         return rows
+
+    def _share_obs(self, agent_obs: np.ndarray) -> np.ndarray:
+        return repeat_team_state(agent_obs).astype(np.float32)
 
     def _agent_infos(self, info: dict[str, Any], reward: float) -> list[dict]:
         # W1 demand-matching (mass-weighted nearest-UAV distance, m) on the
@@ -170,14 +176,16 @@ if __name__ == "__main__":
     print(f"K={env.k}  N(agents)={env.num_agents}  obs={env.observation_space[0].shape}  "
           f"act={env.action_space[0].shape}  share={env.share_observation_space[0].shape}")
     rng = np.random.default_rng(0)
-    obs_n, _ = env.reset(seed=20260604)
+    obs_n, share_obs_n, _ = env.reset(seed=20260604)
     assert obs_n.shape == (env.num_agents, OBS_DIM), obs_n.shape
+    assert share_obs_n.shape == (env.num_agents, team_state_dim(env.num_agents))
     assert np.isfinite(obs_n).all()
     tot = 0.0
     for t in range(200):
         a = rng.uniform(-1, 1, (env.num_agents, ACT_DIM))
-        obs_n, r_n, term_n, trunc_n, info_n = env.step(a)
+        obs_n, share_obs_n, r_n, term_n, trunc_n, info_n = env.step(a)
         assert obs_n.shape == (env.num_agents, OBS_DIM)
+        assert share_obs_n.shape == (env.num_agents, team_state_dim(env.num_agents))
         assert np.isfinite(obs_n).all() and np.isfinite(r_n).all()
         assert len(r_n) == env.num_agents and not any(term_n)
         tot += r_n[0][0]

@@ -206,6 +206,8 @@ class Runner(object):
                 policy_critic.state_dict(), str(target_dir / "critic.pt")
             )
             self._save_training_state(target_dir, total_num_steps)
+        if hasattr(self.envs, "save_vec_normalize"):
+            self.envs.save_vec_normalize(target_dir / "vec_normalize.npz")
         save_run_config(
             self.all_args,
             self.run_dir,
