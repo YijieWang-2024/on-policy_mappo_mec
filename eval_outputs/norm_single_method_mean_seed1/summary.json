@@ -1,0 +1,99 @@
+{
+  "runs": [
+    {
+      "key": "feature_norm_only",
+      "label": "FeatureNorm only",
+      "path": "onpolicy\\scripts\\results\\MEC\\v6_hap_loadbearing\\mappo\\postchange_resetperm1500_mean_seed1\\run1"
+    },
+    {
+      "key": "flat_rms_only",
+      "label": "Flat RMS only",
+      "path": "onpolicy\\scripts\\results\\MEC\\v6_hap_loadbearing\\mappo\\postchange_rms_nofeat_resetperm1500_mean_seed1\\run1"
+    },
+    {
+      "key": "component_rms_only",
+      "label": "Component RMS only",
+      "path": "onpolicy\\scripts\\results\\MEC\\v6_hap_loadbearing\\mappo\\postchange_component_rms_nofeat_resetperm1500_mean_seed1\\run1"
+    }
+  ],
+  "summary": [
+    {
+      "metric": "train",
+      "run": "feature_norm_only",
+      "label": "FeatureNorm only",
+      "points": 54,
+      "last_step": 1489600,
+      "last_reward": -777.3248901367188,
+      "best_step": 1013600,
+      "best_reward": -698.5407104492188,
+      "last5_mean": -792.907958984375,
+      "early500_mean": -1305.1341552734375,
+      "auc_mean": -987.3190935242851
+    },
+    {
+      "metric": "train",
+      "run": "flat_rms_only",
+      "label": "Flat RMS only",
+      "points": 54,
+      "last_step": 1489600,
+      "last_reward": -868.15380859375,
+      "best_step": 1377600,
+      "best_reward": -776.6467895507812,
+      "last5_mean": -845.4785034179688,
+      "early500_mean": -1214.2035115559895,
+      "auc_mean": -1000.739444372789
+    },
+    {
+      "metric": "train",
+      "run": "component_rms_only",
+      "label": "Component RMS only",
+      "points": 54,
+      "last_step": 1489600,
+      "last_reward": -845.9555053710938,
+      "best_step": 1209600,
+      "best_reward": -790.5570068359375,
+      "last5_mean": -870.3667358398437,
+      "early500_mean": -1355.7828233506943,
+      "auc_mean": -1088.1364982173127
+    },
+    {
+      "metric": "eval",
+      "run": "feature_norm_only",
+      "label": "FeatureNorm only",
+      "points": 15,
+      "last_step": 1495200,
+      "last_reward": -730.026123046875,
+      "best_step": 1310400,
+      "best_reward": -696.8170776367188,
+      "last5_mean": -715.3293212890625,
+      "early500_mean": -1247.6959838867188,
+      "auc_mean": -879.146283988493
+    },
+    {
+      "metric": "eval",
+      "run": "flat_rms_only",
+      "label": "Flat RMS only",
+      "points": 15,
+      "last_step": 1495200,
+      "last_reward": -815.9241943359375,
+      "best_step": 504000,
+      "best_reward": -799.5015258789062,
+      "last5_mean": -872.3277221679688,
+      "early500_mean": -1086.5965576171875,
+      "auc_mean": -907.6850291792168
+    },
+    {
+      "metric": "eval",
+      "run": "component_rms_only",
+      "label": "Component RMS only",
+      "points": 15,
+      "last_step": 1495200,
+      "last_reward": -829.6634521484375,
+      "best_step": 1108800,
+      "best_reward": -822.5014038085938,
+      "last5_mean": -845.5488037109375,
+      "early500_mean": -1265.7417297363281,
+      "auc_mean": -977.9989190159074
+    }
+  ]
+}

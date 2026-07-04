@@ -1,0 +1,208 @@
+metric,run,label,step,value
+train,feature_norm_only,FeatureNorm only,5600,-1620.408935546875
+train,feature_norm_only,FeatureNorm only,33600,-1557.4169921875
+train,feature_norm_only,FeatureNorm only,61600,-1607.382568359375
+train,feature_norm_only,FeatureNorm only,89600,-1379.99072265625
+train,feature_norm_only,FeatureNorm only,117600,-1767.162109375
+train,feature_norm_only,FeatureNorm only,145600,-1482.0343017578125
+train,feature_norm_only,FeatureNorm only,173600,-1404.4970703125
+train,feature_norm_only,FeatureNorm only,201600,-1256.4169921875
+train,feature_norm_only,FeatureNorm only,229600,-1335.8309326171875
+train,feature_norm_only,FeatureNorm only,257600,-1260.5311279296875
+train,feature_norm_only,FeatureNorm only,285600,-1339.0938720703125
+train,feature_norm_only,FeatureNorm only,313600,-1163.0677490234375
+train,feature_norm_only,FeatureNorm only,341600,-977.5929565429688
+train,feature_norm_only,FeatureNorm only,369600,-1138.7833251953125
+train,feature_norm_only,FeatureNorm only,397600,-1121.3604736328125
+train,feature_norm_only,FeatureNorm only,425600,-1089.6451416015625
+train,feature_norm_only,FeatureNorm only,453600,-989.112060546875
+train,feature_norm_only,FeatureNorm only,481600,-1002.0874633789062
+train,feature_norm_only,FeatureNorm only,509600,-963.7906494140625
+train,feature_norm_only,FeatureNorm only,537600,-954.3294067382812
+train,feature_norm_only,FeatureNorm only,565600,-863.2132568359375
+train,feature_norm_only,FeatureNorm only,593600,-942.4105834960938
+train,feature_norm_only,FeatureNorm only,621600,-999.1841430664062
+train,feature_norm_only,FeatureNorm only,649600,-1024.476806640625
+train,feature_norm_only,FeatureNorm only,677600,-951.6159057617188
+train,feature_norm_only,FeatureNorm only,705600,-874.0359497070312
+train,feature_norm_only,FeatureNorm only,733600,-918.3735961914062
+train,feature_norm_only,FeatureNorm only,761600,-1014.46044921875
+train,feature_norm_only,FeatureNorm only,789600,-945.2758178710938
+train,feature_norm_only,FeatureNorm only,817600,-950.1893310546875
+train,feature_norm_only,FeatureNorm only,845600,-870.3623046875
+train,feature_norm_only,FeatureNorm only,873600,-768.8457641601562
+train,feature_norm_only,FeatureNorm only,901600,-822.5867309570312
+train,feature_norm_only,FeatureNorm only,929600,-805.716796875
+train,feature_norm_only,FeatureNorm only,957600,-768.4932250976562
+train,feature_norm_only,FeatureNorm only,985600,-740.1261596679688
+train,feature_norm_only,FeatureNorm only,1013600,-698.5407104492188
+train,feature_norm_only,FeatureNorm only,1041600,-790.480224609375
+train,feature_norm_only,FeatureNorm only,1069600,-808.9884643554688
+train,feature_norm_only,FeatureNorm only,1097600,-784.75927734375
+train,feature_norm_only,FeatureNorm only,1125600,-775.9185180664062
+train,feature_norm_only,FeatureNorm only,1153600,-776.51953125
+train,feature_norm_only,FeatureNorm only,1181600,-768.0596923828125
+train,feature_norm_only,FeatureNorm only,1209600,-725.2479858398438
+train,feature_norm_only,FeatureNorm only,1237600,-734.410400390625
+train,feature_norm_only,FeatureNorm only,1265600,-742.0169677734375
+train,feature_norm_only,FeatureNorm only,1293600,-720.62841796875
+train,feature_norm_only,FeatureNorm only,1321600,-813.9744262695312
+train,feature_norm_only,FeatureNorm only,1349600,-752.7927856445312
+train,feature_norm_only,FeatureNorm only,1377600,-710.4678344726562
+train,feature_norm_only,FeatureNorm only,1405600,-776.5469970703125
+train,feature_norm_only,FeatureNorm only,1433600,-783.6386108398438
+train,feature_norm_only,FeatureNorm only,1461600,-916.5614624023438
+train,feature_norm_only,FeatureNorm only,1489600,-777.3248901367188
+train,flat_rms_only,Flat RMS only,5600,-1632.4927978515625
+train,flat_rms_only,Flat RMS only,33600,-1522.070068359375
+train,flat_rms_only,Flat RMS only,61600,-1482.020751953125
+train,flat_rms_only,Flat RMS only,89600,-1319.890869140625
+train,flat_rms_only,Flat RMS only,117600,-1528.5096435546875
+train,flat_rms_only,Flat RMS only,145600,-1345.720703125
+train,flat_rms_only,Flat RMS only,173600,-1350.431396484375
+train,flat_rms_only,Flat RMS only,201600,-1320.453125
+train,flat_rms_only,Flat RMS only,229600,-1090.35986328125
+train,flat_rms_only,Flat RMS only,257600,-1269.4593505859375
+train,flat_rms_only,Flat RMS only,285600,-1214.40478515625
+train,flat_rms_only,Flat RMS only,313600,-1064.09130859375
+train,flat_rms_only,Flat RMS only,341600,-987.5523681640625
+train,flat_rms_only,Flat RMS only,369600,-1019.4597778320312
+train,flat_rms_only,Flat RMS only,397600,-996.1658935546875
+train,flat_rms_only,Flat RMS only,425600,-909.4979248046875
+train,flat_rms_only,Flat RMS only,453600,-914.0750732421875
+train,flat_rms_only,Flat RMS only,481600,-889.0075073242188
+train,flat_rms_only,Flat RMS only,509600,-901.9660034179688
+train,flat_rms_only,Flat RMS only,537600,-862.882080078125
+train,flat_rms_only,Flat RMS only,565600,-843.6896362304688
+train,flat_rms_only,Flat RMS only,593600,-819.9425659179688
+train,flat_rms_only,Flat RMS only,621600,-908.1983032226562
+train,flat_rms_only,Flat RMS only,649600,-889.7979736328125
+train,flat_rms_only,Flat RMS only,677600,-880.9330444335938
+train,flat_rms_only,Flat RMS only,705600,-849.1981201171875
+train,flat_rms_only,Flat RMS only,733600,-837.8576049804688
+train,flat_rms_only,Flat RMS only,761600,-1042.3145751953125
+train,flat_rms_only,Flat RMS only,789600,-816.7198486328125
+train,flat_rms_only,Flat RMS only,817600,-973.4341430664062
+train,flat_rms_only,Flat RMS only,845600,-852.041015625
+train,flat_rms_only,Flat RMS only,873600,-995.6956787109375
+train,flat_rms_only,Flat RMS only,901600,-843.2815551757812
+train,flat_rms_only,Flat RMS only,929600,-917.385986328125
+train,flat_rms_only,Flat RMS only,957600,-936.9439086914062
+train,flat_rms_only,Flat RMS only,985600,-833.7283325195312
+train,flat_rms_only,Flat RMS only,1013600,-845.5527954101562
+train,flat_rms_only,Flat RMS only,1041600,-814.7302856445312
+train,flat_rms_only,Flat RMS only,1069600,-991.1307373046875
+train,flat_rms_only,Flat RMS only,1097600,-946.6134643554688
+train,flat_rms_only,Flat RMS only,1125600,-906.7178344726562
+train,flat_rms_only,Flat RMS only,1153600,-1024.6785888671875
+train,flat_rms_only,Flat RMS only,1181600,-1136.88720703125
+train,flat_rms_only,Flat RMS only,1209600,-909.791015625
+train,flat_rms_only,Flat RMS only,1237600,-1015.7313842773438
+train,flat_rms_only,Flat RMS only,1265600,-895.4593505859375
+train,flat_rms_only,Flat RMS only,1293600,-876.8739013671875
+train,flat_rms_only,Flat RMS only,1321600,-883.1056518554688
+train,flat_rms_only,Flat RMS only,1349600,-953.175537109375
+train,flat_rms_only,Flat RMS only,1377600,-776.6467895507812
+train,flat_rms_only,Flat RMS only,1405600,-856.8677978515625
+train,flat_rms_only,Flat RMS only,1433600,-886.164794921875
+train,flat_rms_only,Flat RMS only,1461600,-839.559326171875
+train,flat_rms_only,Flat RMS only,1489600,-868.15380859375
+train,component_rms_only,Component RMS only,5600,-1647.3489990234375
+train,component_rms_only,Component RMS only,33600,-1575.4534912109375
+train,component_rms_only,Component RMS only,61600,-1608.0460205078125
+train,component_rms_only,Component RMS only,89600,-1318.6873779296875
+train,component_rms_only,Component RMS only,117600,-1645.3856201171875
+train,component_rms_only,Component RMS only,145600,-1453.972900390625
+train,component_rms_only,Component RMS only,173600,-1485.2642822265625
+train,component_rms_only,Component RMS only,201600,-1317.40869140625
+train,component_rms_only,Component RMS only,229600,-1308.968994140625
+train,component_rms_only,Component RMS only,257600,-1340.0322265625
+train,component_rms_only,Component RMS only,285600,-1465.4217529296875
+train,component_rms_only,Component RMS only,313600,-1271.574462890625
+train,component_rms_only,Component RMS only,341600,-1120.7806396484375
+train,component_rms_only,Component RMS only,369600,-1226.6668701171875
+train,component_rms_only,Component RMS only,397600,-1272.7939453125
+train,component_rms_only,Component RMS only,425600,-1154.3172607421875
+train,component_rms_only,Component RMS only,453600,-1088.0782470703125
+train,component_rms_only,Component RMS only,481600,-1103.8890380859375
+train,component_rms_only,Component RMS only,509600,-1167.29638671875
+train,component_rms_only,Component RMS only,537600,-1061.739013671875
+train,component_rms_only,Component RMS only,565600,-1071.57470703125
+train,component_rms_only,Component RMS only,593600,-966.130615234375
+train,component_rms_only,Component RMS only,621600,-1162.776611328125
+train,component_rms_only,Component RMS only,649600,-1039.231689453125
+train,component_rms_only,Component RMS only,677600,-995.9595336914062
+train,component_rms_only,Component RMS only,705600,-1160.57958984375
+train,component_rms_only,Component RMS only,733600,-931.4898071289062
+train,component_rms_only,Component RMS only,761600,-1151.6256103515625
+train,component_rms_only,Component RMS only,789600,-965.1387329101562
+train,component_rms_only,Component RMS only,817600,-1183.6160888671875
+train,component_rms_only,Component RMS only,845600,-1044.701904296875
+train,component_rms_only,Component RMS only,873600,-991.4545288085938
+train,component_rms_only,Component RMS only,901600,-1022.9105224609375
+train,component_rms_only,Component RMS only,929600,-1056.5601806640625
+train,component_rms_only,Component RMS only,957600,-876.0785522460938
+train,component_rms_only,Component RMS only,985600,-919.9730834960938
+train,component_rms_only,Component RMS only,1013600,-937.2850341796875
+train,component_rms_only,Component RMS only,1041600,-900.3634643554688
+train,component_rms_only,Component RMS only,1069600,-1020.915283203125
+train,component_rms_only,Component RMS only,1097600,-914.9244995117188
+train,component_rms_only,Component RMS only,1125600,-923.5697021484375
+train,component_rms_only,Component RMS only,1153600,-906.211669921875
+train,component_rms_only,Component RMS only,1181600,-839.4037475585938
+train,component_rms_only,Component RMS only,1209600,-790.5570068359375
+train,component_rms_only,Component RMS only,1237600,-826.452880859375
+train,component_rms_only,Component RMS only,1265600,-812.7122802734375
+train,component_rms_only,Component RMS only,1293600,-842.162109375
+train,component_rms_only,Component RMS only,1321600,-825.105224609375
+train,component_rms_only,Component RMS only,1349600,-853.4620971679688
+train,component_rms_only,Component RMS only,1377600,-844.58642578125
+train,component_rms_only,Component RMS only,1405600,-837.5352172851562
+train,component_rms_only,Component RMS only,1433600,-922.0537109375
+train,component_rms_only,Component RMS only,1461600,-901.7028198242188
+train,component_rms_only,Component RMS only,1489600,-845.9555053710938
+eval,feature_norm_only,FeatureNorm only,100800,-1503.7208251953125
+eval,feature_norm_only,FeatureNorm only,201600,-1322.3052978515625
+eval,feature_norm_only,FeatureNorm only,302400,-1134.7174072265625
+eval,feature_norm_only,FeatureNorm only,403200,-1030.0404052734375
+eval,feature_norm_only,FeatureNorm only,504000,-864.5350341796875
+eval,feature_norm_only,FeatureNorm only,604800,-872.0661010742188
+eval,feature_norm_only,FeatureNorm only,705600,-813.9916381835938
+eval,feature_norm_only,FeatureNorm only,806400,-880.0501098632812
+eval,feature_norm_only,FeatureNorm only,907200,-702.2868041992188
+eval,feature_norm_only,FeatureNorm only,1008000,-701.38525390625
+eval,feature_norm_only,FeatureNorm only,1108800,-697.1685791015625
+eval,feature_norm_only,FeatureNorm only,1209600,-702.47998046875
+eval,feature_norm_only,FeatureNorm only,1310400,-696.8170776367188
+eval,feature_norm_only,FeatureNorm only,1411200,-750.1548461914062
+eval,feature_norm_only,FeatureNorm only,1495200,-730.026123046875
+eval,flat_rms_only,Flat RMS only,100800,-1370.135009765625
+eval,flat_rms_only,Flat RMS only,201600,-1155.43603515625
+eval,flat_rms_only,Flat RMS only,302400,-937.4622192382812
+eval,flat_rms_only,Flat RMS only,403200,-883.3529663085938
+eval,flat_rms_only,Flat RMS only,504000,-799.5015258789062
+eval,flat_rms_only,Flat RMS only,604800,-831.20654296875
+eval,flat_rms_only,Flat RMS only,705600,-807.8412475585938
+eval,flat_rms_only,Flat RMS only,806400,-861.109375
+eval,flat_rms_only,Flat RMS only,907200,-902.8070678710938
+eval,flat_rms_only,Flat RMS only,1008000,-879.6799926757812
+eval,flat_rms_only,Flat RMS only,1108800,-828.1864624023438
+eval,flat_rms_only,Flat RMS only,1209600,-976.596435546875
+eval,flat_rms_only,Flat RMS only,1310400,-866.878662109375
+eval,flat_rms_only,Flat RMS only,1411200,-874.0528564453125
+eval,flat_rms_only,Flat RMS only,1495200,-815.9241943359375
+eval,component_rms_only,Component RMS only,100800,-1397.1112060546875
+eval,component_rms_only,Component RMS only,201600,-1343.7235107421875
+eval,component_rms_only,Component RMS only,302400,-1144.32080078125
+eval,component_rms_only,Component RMS only,403200,-1177.8114013671875
+eval,component_rms_only,Component RMS only,504000,-1051.0068359375
+eval,component_rms_only,Component RMS only,604800,-983.0012817382812
+eval,component_rms_only,Component RMS only,705600,-898.6055908203125
+eval,component_rms_only,Component RMS only,806400,-875.5357055664062
+eval,component_rms_only,Component RMS only,907200,-841.351318359375
+eval,component_rms_only,Component RMS only,1008000,-840.8499755859375
+eval,component_rms_only,Component RMS only,1108800,-822.5014038085938
+eval,component_rms_only,Component RMS only,1209600,-907.0745849609375
+eval,component_rms_only,Component RMS only,1310400,-833.8967895507812
+eval,component_rms_only,Component RMS only,1411200,-834.6077880859375
+eval,component_rms_only,Component RMS only,1495200,-829.6634521484375

@@ -537,6 +537,7 @@ class ShareVecNormalize(ShareVecEnv):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
+            "norm_mode": np.asarray("flat"),
             "clip_obs": np.asarray(self.clip_obs, dtype=np.float64),
             "epsilon": np.asarray(self.epsilon, dtype=np.float64),
             "obs_mask": self.obs_mask,

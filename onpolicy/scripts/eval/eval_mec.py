@@ -11,6 +11,7 @@ import torch
 
 from onpolicy.config import get_config
 from onpolicy.envs.mec.MEC_env import ACT_DIM, MECEnv
+from onpolicy.envs.mec.normalization import MECComponentNormalizer
 from onpolicy.algorithms.mec.mec_policy import MECPolicy
 from onpolicy.utils.run_config import apply_saved_args, explicit_option_names, load_model_config
 
@@ -24,6 +25,7 @@ def _parse(argv):
     parser.add_argument("--mec_eval_seed", type=int, default=None)
     parser.add_argument("--mec_eval_seed_stride", type=int, default=None)
     parser.add_argument("--mec_eval_episodes", type=int, default=None)
+    parser.add_argument("--mec_obs_norm_mode", choices=["flat", "component"], default="flat")
     args = parser.parse_known_args(argv)[0]
     saved = load_model_config(args.model_dir)
     if saved:
@@ -67,7 +69,19 @@ def _load_obs_norm(args):
             f"--use_obs_norm is enabled but {stats_path} was not found"
         )
     data = np.load(stats_path, allow_pickle=False)
+    mode = str(np.asarray(data["norm_mode"])) if "norm_mode" in data else "flat"
+    if mode == "component":
+        normalizer = MECComponentNormalizer(
+            args.num_agents,
+            clip_obs=args.obs_norm_clip,
+            epsilon=args.obs_norm_epsilon,
+        )
+        normalizer.load(stats_path, expected_num_agents=args.num_agents)
+        return normalizer
+    if mode != "flat":
+        raise ValueError(f"unknown vec_normalize norm_mode: {mode}")
     return {
+        "mode": "flat",
         "mean": np.asarray(data["obs_mean"], dtype=np.float64),
         "var": np.asarray(data["obs_var"], dtype=np.float64),
         "mask": np.asarray(data["obs_mask"], dtype=bool),
@@ -79,6 +93,8 @@ def _load_obs_norm(args):
 def _normalize_obs(obs, norm):
     if norm is None:
         return obs
+    if hasattr(norm, "normalize_obs"):
+        return norm.normalize_obs(obs)
     obs = np.asarray(obs, dtype=np.float32)
     out = obs.copy()
     normed = (obs - norm["mean"]) / np.sqrt(norm["var"] + norm["epsilon"])

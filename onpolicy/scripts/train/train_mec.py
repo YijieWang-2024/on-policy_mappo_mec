@@ -23,6 +23,7 @@ from onpolicy.envs.env_wrappers import (
     ShareVecNormalize,
 )
 from onpolicy.envs.mec.MEC_env import MECEnv
+from onpolicy.envs.mec.normalization import MECComponentVecNormalize
 from onpolicy.envs.mec.observation import (
     PHYSICAL_PUBLIC_STATE_DIM,
     PUBLIC_STATE_DIM,
@@ -73,16 +74,27 @@ def _mec_norm_masks(envs):
 def _maybe_wrap_obs_norm(all_args, envs, *, training):
     if not getattr(all_args, "use_obs_norm", False):
         return envs
-    obs_mask, share_obs_mask = _mec_norm_masks(envs)
-    envs = ShareVecNormalize(
-        envs,
-        training=training,
-        clip_obs=all_args.obs_norm_clip,
-        epsilon=all_args.obs_norm_epsilon,
-        obs_mask=obs_mask,
-        share_obs_mask=share_obs_mask,
-        share_obs_unique=True,
-    )
+    mode = getattr(all_args, "mec_obs_norm_mode", "flat")
+    if mode == "component":
+        envs = MECComponentVecNormalize(
+            envs,
+            training=training,
+            clip_obs=all_args.obs_norm_clip,
+            epsilon=all_args.obs_norm_epsilon,
+        )
+    elif mode == "flat":
+        obs_mask, share_obs_mask = _mec_norm_masks(envs)
+        envs = ShareVecNormalize(
+            envs,
+            training=training,
+            clip_obs=all_args.obs_norm_clip,
+            epsilon=all_args.obs_norm_epsilon,
+            obs_mask=obs_mask,
+            share_obs_mask=share_obs_mask,
+            share_obs_unique=True,
+        )
+    else:
+        raise ValueError(f"unknown MEC obs norm mode: {mode}")
     if all_args.model_dir:
         stats_path = Path(all_args.model_dir) / "vec_normalize.npz"
         if stats_path.exists():
@@ -105,6 +117,12 @@ def parse_args(args, parser):
             "override the MEC scenario horizon; must equal --episode_length "
             "so each rollout is one complete environment episode"
         ),
+    )
+    parser.add_argument(
+        "--mec_obs_norm_mode",
+        choices=["flat", "component"],
+        default="flat",
+        help="MEC obs/share_obs RMS mode used when --use_obs_norm is enabled",
     )
     return parser.parse_known_args(args)[0]
 

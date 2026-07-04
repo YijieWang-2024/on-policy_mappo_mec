@@ -257,9 +257,7 @@ class MECRunner(Runner):
 
     @torch.no_grad()
     def eval(self, total_num_steps):
-        if hasattr(self.eval_envs, "copy_vec_normalize_from") and hasattr(
-            self.envs, "obs_rms"
-        ):
+        if hasattr(self.eval_envs, "copy_vec_normalize_from"):
             self.eval_envs.copy_vec_normalize_from(self.envs, training=False)
         target_episodes = int(self.all_args.eval_episodes)
         completed_rewards = []
