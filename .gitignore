@@ -7,18 +7,29 @@ build
 win_rate
 *.so
 *.csv
+!/experiments/archive/generated_outputs/**/*.csv
 RODE
 *.egg-info
 wandb
 .vscode
 api
 logs
-run_logs/
 .nfs*
 *.so
 
-# Local editor and experiment artifacts
+# Local editor state
 .idea/
-training_logs/
-analysis_outputs/
 .pytest_cache/
+
+# Generated local experiment artifacts. Keep durable summaries in experiments/
+# or docs/ instead of committing raw logs and generated plots.
+/artifacts/analysis/
+/artifacts/evaluations/
+/artifacts/runs/
+/artifacts/tmp/
+
+# Retired top-level artifact paths; keep ignored in case old scripts recreate them.
+/analysis_outputs/
+/eval_outputs/
+/run_logs/
+/training_logs/

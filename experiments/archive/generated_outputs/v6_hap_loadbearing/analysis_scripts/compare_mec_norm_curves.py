@@ -260,7 +260,7 @@ def add_deltas(summaries: list[dict[str, object]]) -> list[dict[str, object]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output-dir", default="eval_outputs/norm_2x3_component_mean_seed1")
+    parser.add_argument("--output-dir", default="artifacts/evaluations/v6_hap_loadbearing/norm_2x3_component_mean_seed1")
     parser.add_argument("--smooth-window", type=int, default=5)
     args = parser.parse_args()
 

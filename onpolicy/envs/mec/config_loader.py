@@ -17,6 +17,8 @@ from typing import Any
 import numpy as np
 import yaml
 
+from onpolicy.envs.mec.observation import MAX_HOTSPOTS
+
 SCENARIO_DIR = Path(__file__).resolve().parent / "scenarios"
 DEFAULT_SCENARIO = "v6_hap_loadbearing"
 
@@ -36,6 +38,7 @@ def load_scenario(name_or_path: str | Path = DEFAULT_SCENARIO,
     reference_fleet_size = int(cfg["env"]["fleet_size_k"])
     if fleet_size_k is not None:
         cfg["env"]["fleet_size_k"] = int(fleet_size_k)
+    _normalize_demand_config(cfg)
     _apply_bandwidth_derivation(cfg)
     _generate_uav_deployment(cfg)
     _broadcast_initial_queues(cfg)
@@ -190,6 +193,24 @@ def backhaul_service_radius_m(cfg: dict[str, Any]) -> float:
     return lo
 
 
+def _normalize_demand_config(cfg: dict[str, Any]) -> None:
+    proc = cfg["demand"]["process"]
+    field = cfg["demand"].get("workload_field")
+    if proc.get("model") == "random_walk_hotspot":
+        proc["model"] = "random_walk_hotspots"
+        proc["num_hotspots"] = 1
+        proc["max_hotspots"] = MAX_HOTSPOTS
+        if "initial_center_frac_range" in proc:
+            proc["initial_hotspot_frac_range"] = proc["initial_center_frac_range"]
+        else:
+            proc["initial_hotspot_fracs"] = [proc["initial_center_frac"]]
+    if field and field.get("model") == "normalized_background_gaussian":
+        zeta = float(field["hotspot_fraction"])
+        field["model"] = "normalized_background_gaussian_mixture"
+        field["background_weight"] = 1.0 - zeta
+        field["hotspot_weights"] = [zeta]
+
+
 def validate_scenario(cfg: dict[str, Any]) -> None:
     k = int(cfg["env"]["fleet_size_k"])
     uav = cfg["env"]["uav"]
@@ -200,11 +221,30 @@ def validate_scenario(cfg: dict[str, Any]) -> None:
     if cfg["communication"]["backhaul"]["link_model"] not in {"mmwave_beam", "continuous_mmwave"}:
         raise ValueError("MEC loader supports backhaul.link_model=mmwave_beam or continuous_mmwave")
     proc = cfg["demand"]["process"]
-    if proc["model"] != "random_walk_hotspot":
-        raise ValueError("v2 loader only supports demand.process.model=random_walk_hotspot")
-    frac = proc["initial_center_frac"]
-    if not (isinstance(frac, list) and len(frac) == 2 and all(0.0 <= float(f) <= 1.0 for f in frac)):
-        raise ValueError("demand.process.initial_center_frac must be two fractions in [0,1]")
+    if proc["model"] not in {"random_walk_hotspots", "static_random_split_hotspots"}:
+        raise ValueError("unsupported demand.process.model")
+    n_hotspots = int(proc.get("num_hotspots", 1))
+    if not (1 <= n_hotspots <= MAX_HOTSPOTS):
+        raise ValueError("demand.process requires 1 <= num_hotspots <= max_hotspots")
+    if int(proc.get("max_hotspots", MAX_HOTSPOTS)) != MAX_HOTSPOTS:
+        raise ValueError(f"demand.process.max_hotspots must be {MAX_HOTSPOTS}")
+    field = cfg["demand"].get("workload_field", {})
+    if field.get("model") == "normalized_background_gaussian_mixture":
+        weights = [float(w) for w in field["hotspot_weights"]]
+        if len(weights) != n_hotspots:
+            raise ValueError("hotspot_weights length must equal num_hotspots")
+        total_weight = float(field["background_weight"]) + sum(weights)
+        if any(w < 0.0 for w in weights) or float(field["background_weight"]) < 0.0:
+            raise ValueError("workload weights must be nonnegative")
+        if abs(total_weight - 1.0) > 1e-8:
+            raise ValueError("background_weight + sum(hotspot_weights) must equal 1")
+    if "initial_hotspot_fracs" in proc:
+        fracs = proc["initial_hotspot_fracs"]
+        if len(fracs) != n_hotspots or any(
+            not (isinstance(frac, list) and len(frac) == 2 and all(0.0 <= float(f) <= 1.0 for f in frac))
+            for frac in fracs
+        ):
+            raise ValueError("initial_hotspot_fracs must be num_hotspots xy fractions")
     if cfg["env"]["slot_timing"]["service_position"] not in {"pre_move", "mid_move", "post_move"}:
         raise ValueError("unsupported env.slot_timing.service_position")
     states = cfg["demand"]["markov_chain"]["states"]

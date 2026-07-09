@@ -23,6 +23,8 @@ from typing import Any
 
 import numpy as np
 
+from onpolicy.envs.mec.observation import HOTSPOT_FEATURE_DIM, MAX_HOTSPOTS
+
 
 @dataclass
 class EnvState:
@@ -30,9 +32,23 @@ class EnvState:
     hap_queue_bits: float
     uav_xy_m: np.ndarray
     uav_queue_bits: np.ndarray
-    demand_center_m: np.ndarray
-    demand_velocity_mps: np.ndarray
+    hotspot_centers_m: np.ndarray
+    hotspot_velocities_mps: np.ndarray
+    hotspot_weights: np.ndarray
+    num_hotspots: int
     step_index: int
+
+    @property
+    def demand_center_m(self) -> np.ndarray:
+        centers = self.hotspot_centers_m[: self.num_hotspots]
+        weights = self.hotspot_weights[: self.num_hotspots]
+        return np.average(centers, axis=0, weights=weights)
+
+    @property
+    def demand_velocity_mps(self) -> np.ndarray:
+        velocities = self.hotspot_velocities_mps[: self.num_hotspots]
+        weights = self.hotspot_weights[: self.num_hotspots]
+        return np.average(velocities, axis=0, weights=weights)
 
 
 class FiniteKHAPUAVMECEnv:
@@ -63,20 +79,26 @@ class FiniteKHAPUAVMECEnv:
     def reset(self, seed: int | None = None):
         if seed is not None:
             self.rng = np.random.default_rng(seed)
-        center, velocity = self._initial_demand_motion()
+        centers, velocities, weights, num_hotspots = self._initial_demand_motion()
         hub_xy, uav_xy = self._initial_deployment()
         self.state = EnvState(
             hap_xy_m=hub_xy,
             hap_queue_bits=float(self.cfg["env"]["hap"]["initial_queue_bits"]),
             uav_xy_m=uav_xy,
             uav_queue_bits=np.array(self.cfg["env"]["uav"]["initial_queue_bits"], dtype=float),
-            demand_center_m=center,
-            demand_velocity_mps=velocity,
+            hotspot_centers_m=centers,
+            hotspot_velocities_mps=velocities,
+            hotspot_weights=weights,
+            num_hotspots=num_hotspots,
             step_index=0,
         )
         return self._observation(), {
-            "demand_center_m": center.copy(),
-            "demand_velocity_mps": velocity.copy(),
+            "demand_center_m": self.state.demand_center_m.copy(),
+            "demand_velocity_mps": self.state.demand_velocity_mps.copy(),
+            "hotspot_centers_m": centers.copy(),
+            "hotspot_velocities_mps": velocities.copy(),
+            "hotspot_weights": weights.copy(),
+            "num_hotspots": num_hotspots,
         }
 
     def _initial_deployment(self) -> tuple[np.ndarray, np.ndarray]:
@@ -120,7 +142,7 @@ class FiniteKHAPUAVMECEnv:
         next_uav_xy = self._clip_xy(st.uav_xy_m + self.delta * uav_v)
         service_hap_xy, service_uav_xy = self._service_positions(
             st.hap_xy_m, st.uav_xy_m, next_hap_xy, next_uav_xy)
-        active_density, fresh_density = self._demand_density(st.demand_center_m)
+        active_density, fresh_density = self._demand_density(st.hotspot_centers_m, st.hotspot_weights)
         access_gain = self._access_gain(service_uav_xy)
         phi0, phi = self._service_share(access_gain)
         outside_loss = float(np.sum(phi0 * fresh_density) * self.cell_area)
@@ -143,7 +165,8 @@ class FiniteKHAPUAVMECEnv:
             demand_i = accepted + source_loss_uav
         source_loss = float(outside_loss + np.sum(source_loss_uav))
         access_diag = self._access_diagnostics(
-            st.demand_center_m, service_hap_xy, service_uav_xy,
+            st.hotspot_centers_m, st.hotspot_weights, st.num_hotspots,
+            service_hap_xy, service_uav_xy,
             fresh_density, phi0, phi, access_gain, access_rate,
             demand_i, accepted, source_loss_uav)
 
@@ -170,10 +193,11 @@ class FiniteKHAPUAVMECEnv:
             pre_uav_queue, pre_hap_queue, source_loss, d_u, d_h,
             uav_energy, hap_energy, next_uav_xy)
 
-        next_center, next_velocity = self._advance_demand(st)
+        next_centers, next_velocities = self._advance_demand(st)
         self.state = EnvState(
             next_hap_xy, next_hap_queue, next_uav_xy, next_uav_queue,
-            next_center, next_velocity, st.step_index + 1)
+            next_centers, next_velocities, st.hotspot_weights.copy(),
+            st.num_hotspots, st.step_index + 1)
 
         phi_sum_error = float(np.max(np.abs(phi0 + np.sum(phi, axis=0) - 1.0)))
         info = {
@@ -204,8 +228,13 @@ class FiniteKHAPUAVMECEnv:
             "next_hap_xy_m": next_hap_xy.copy(),
             "next_uav_xy_m": next_uav_xy.copy(),
             "demand_center_m": st.demand_center_m.copy(),
-            "next_demand_center_m": next_center.copy(),
+            "next_demand_center_m": self.state.demand_center_m.copy(),
             "demand_velocity_mps": st.demand_velocity_mps.copy(),
+            "hotspot_centers_m": st.hotspot_centers_m.copy(),
+            "next_hotspot_centers_m": next_centers.copy(),
+            "hotspot_velocities_mps": st.hotspot_velocities_mps.copy(),
+            "hotspot_weights": st.hotspot_weights.copy(),
+            "num_hotspots": st.num_hotspots,
             "backhaul_rate_bps": backhaul_rate,
             "backhaul_in_range": backhaul_rate > 0.0,
             "access_rate_bps": access_rate,
@@ -238,11 +267,19 @@ class FiniteKHAPUAVMECEnv:
                 "queue_bits": float(st.hap_queue_bits),
                 "demand_center_m": st.demand_center_m.copy(),
                 "demand_velocity_mps": st.demand_velocity_mps.copy(),
+                "hotspot_centers_m": st.hotspot_centers_m.copy(),
+                "hotspot_velocities_mps": st.hotspot_velocities_mps.copy(),
+                "hotspot_weights": st.hotspot_weights.copy(),
+                "num_hotspots": st.num_hotspots,
                 "demand_features": demand_features.copy(),
             },
             "demand": {
                 "hotspot_center_m": st.demand_center_m.copy(),
                 "hotspot_velocity_mps": st.demand_velocity_mps.copy(),
+                "hotspot_centers_m": st.hotspot_centers_m.copy(),
+                "hotspot_velocities_mps": st.hotspot_velocities_mps.copy(),
+                "hotspot_weights": st.hotspot_weights.copy(),
+                "num_hotspots": st.num_hotspots,
                 "features": demand_features.copy(),
             },
             "uavs": {"xy_m": st.uav_xy_m.copy(), "queue_bits": st.uav_queue_bits.copy()},
@@ -250,63 +287,109 @@ class FiniteKHAPUAVMECEnv:
         }
 
     def _demand_features(self, state: EnvState) -> np.ndarray:
-        pos_norm = state.demand_center_m / np.array(
+        pos_norm = state.hotspot_centers_m / np.array(
             self.cfg["normalization"]["position"]["divide_by_m"], dtype=float)
         velocity_scale = max(float(self.cfg["env"]["uav"]["velocity_max_mps"]), self.eps)
-        vel_norm = state.demand_velocity_mps / velocity_scale
-        return np.concatenate([pos_norm, vel_norm]).astype(float, copy=False)
+        vel_norm = state.hotspot_velocities_mps / velocity_scale
+        features = np.zeros((MAX_HOTSPOTS, HOTSPOT_FEATURE_DIM), dtype=float)
+        features[:, :2] = pos_norm
+        features[:, 2:4] = vel_norm
+        features[:, 4] = state.hotspot_weights
+        return features.ravel()
 
     # ------------------------------------------------- demand (v2 random walk)
 
-    def _initial_demand_motion(self) -> tuple[np.ndarray, np.ndarray]:
+    def _initial_demand_motion(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
         proc = self.cfg["demand"]["process"]
-        rng = proc.get("initial_center_frac_range")
-        if rng is not None:
-            # per-episode random hotspot centre, sampled in a central box (lo,hi per
-            # axis) so it is never near a boundary; policy must observe & respond.
-            (lo_x, hi_x), (lo_y, hi_y) = rng
-            fx = self.rng.uniform(float(lo_x), float(hi_x))
-            fy = self.rng.uniform(float(lo_y), float(hi_y))
-            frac = np.array([fx, fy], dtype=float)
+        n = int(proc.get("num_hotspots", 1))
+        weights = np.zeros(MAX_HOTSPOTS, dtype=float)
+        weights[:n] = np.array(self.cfg["demand"]["workload_field"]["hotspot_weights"], dtype=float)
+        if proc["model"] == "static_random_split_hotspots":
+            active_centers = self._sample_random_split_pair(proc)
+            active_velocities = np.zeros((n, 2), dtype=float)
         else:
-            frac = np.array(proc["initial_center_frac"], dtype=float)
-        center = frac * np.array([self.lx, self.ly], dtype=float)
-        theta = self.rng.uniform(0.0, 2.0 * math.pi)
-        speed = float(proc["speed_mps"])
-        velocity = np.array([speed * math.cos(theta), speed * math.sin(theta)])
-        return self._clip_xy(center), velocity
+            active_centers = self._sample_initial_hotspots(proc, n)
+            speed = float(proc.get("speed_mps", 0.0))
+            theta = self.rng.uniform(0.0, 2.0 * math.pi, size=n)
+            active_velocities = np.column_stack((speed * np.cos(theta), speed * np.sin(theta)))
+        centers = np.zeros((MAX_HOTSPOTS, 2), dtype=float)
+        velocities = np.zeros((MAX_HOTSPOTS, 2), dtype=float)
+        centers[:n] = self._clip_xy(active_centers)
+        velocities[:n] = active_velocities
+        return centers, velocities, weights, n
+
+    def _sample_initial_hotspots(self, proc: dict[str, Any], n: int) -> np.ndarray:
+        if "initial_hotspot_fracs" in proc:
+            frac = np.array(proc["initial_hotspot_fracs"], dtype=float)
+            return frac * np.array([self.lx, self.ly], dtype=float)
+        (lo_x, hi_x), (lo_y, hi_y) = proc["initial_hotspot_frac_range"]
+        frac = np.column_stack((
+            self.rng.uniform(float(lo_x), float(hi_x), size=n),
+            self.rng.uniform(float(lo_y), float(hi_y), size=n),
+        ))
+        return frac * np.array([self.lx, self.ly], dtype=float)
+
+    def _sample_random_split_pair(self, proc: dict[str, Any]) -> np.ndarray:
+        (lo_x, hi_x), (lo_y, hi_y) = proc["pair_centroid_frac_range"]
+        d_lo, d_hi = proc["pair_distance_m_range"]
+        (sx_lo, sx_hi), (sy_lo, sy_hi) = proc["hotspot_safe_frac_range"]
+        lower = np.array([sx_lo * self.lx, sy_lo * self.ly], dtype=float)
+        upper = np.array([sx_hi * self.lx, sy_hi * self.ly], dtype=float)
+        for _ in range(int(proc.get("rejection_attempts", 256))):
+            centroid = np.array([
+                self.rng.uniform(float(lo_x), float(hi_x)) * self.lx,
+                self.rng.uniform(float(lo_y), float(hi_y)) * self.ly,
+            ])
+            theta = self.rng.uniform(0.0, 2.0 * math.pi)
+            offset = 0.5 * self.rng.uniform(float(d_lo), float(d_hi)) * np.array(
+                [math.cos(theta), math.sin(theta)]
+            )
+            centers = np.vstack((centroid - offset, centroid + offset))
+            if np.all(centers >= lower) and np.all(centers <= upper):
+                return centers
+        raise RuntimeError("failed to sample random split hotspots")
 
     def _advance_demand(self, state: EnvState) -> tuple[np.ndarray, np.ndarray]:
         noise_std = float(self.cfg["demand"]["process"]["noise_std_m"])
-        drift = state.demand_velocity_mps * self.delta + self.rng.normal(0.0, noise_std, 2)
-        next_center = np.array(state.demand_center_m, dtype=float) + drift
-        next_velocity = np.array(state.demand_velocity_mps, dtype=float).copy()
+        next_center = np.array(state.hotspot_centers_m, dtype=float)
+        next_velocity = np.array(state.hotspot_velocities_mps, dtype=float).copy()
+        n = state.num_hotspots
+        drift = state.hotspot_velocities_mps[:n] * self.delta + self.rng.normal(0.0, noise_std, (n, 2))
+        next_center[:n] += drift
         limits = np.array([self.lx, self.ly], dtype=float)
-        for axis, upper in enumerate(limits):
-            if next_center[axis] < 0.0:
-                next_center[axis] = -next_center[axis]
-                next_velocity[axis] *= -1.0
-            if next_center[axis] > upper:
-                next_center[axis] = 2.0 * upper - next_center[axis]
-                next_velocity[axis] *= -1.0
+        for i in range(n):
+            for axis, upper in enumerate(limits):
+                if next_center[i, axis] < 0.0:
+                    next_center[i, axis] = -next_center[i, axis]
+                    next_velocity[i, axis] *= -1.0
+                if next_center[i, axis] > upper:
+                    next_center[i, axis] = 2.0 * upper - next_center[i, axis]
+                    next_velocity[i, axis] *= -1.0
         return self._clip_xy(next_center), next_velocity
 
-    def _demand_density(self, center: np.ndarray):
+    def _demand_density(self, centers: np.ndarray | None = None, weights: np.ndarray | None = None):
         demand = self.cfg["demand"]
         field = demand.get("workload_field")
-        if field is not None and field.get("model") == "normalized_background_gaussian":
-            dist2 = np.sum((self.grid_xy - center) ** 2, axis=1)
+        if centers is None:
+            assert self.state is not None
+            centers, weights = self.state.hotspot_centers_m, self.state.hotspot_weights
+        centers = np.atleast_2d(np.asarray(centers, dtype=float))
+        weights = np.asarray(weights if weights is not None else np.ones(len(centers)), dtype=float)
+        if field is not None and field.get("model") == "normalized_background_gaussian_mixture":
             sigma = float(field["hotspot_sigma_m"])
-            hot = np.exp(-dist2 / (2.0 * sigma**2))
-            hot_norm = np.sum(hot) * self.cell_area
             area = self.lx * self.ly
             total = float(field["total_workload_bits_per_slot"])
-            zeta = float(field["hotspot_fraction"])
-            density = total * ((1.0 - zeta) / area + zeta * hot / max(hot_norm, self.eps))
+            density = np.full(len(self.grid_xy), total * float(field["background_weight"]) / area)
+            for center, weight in zip(centers, weights):
+                if weight <= 0.0:
+                    continue
+                dist2 = np.sum((self.grid_xy - center) ** 2, axis=1)
+                hot = np.exp(-dist2 / (2.0 * sigma**2))
+                density += total * weight * hot / max(np.sum(hot) * self.cell_area, self.eps)
             return density, density
         rho = float(demand["device_density"]["rho_g_devices_per_m2"])
         ap = demand["activity_probability"]
-        dist2 = np.sum((self.grid_xy - center) ** 2, axis=1)
+        dist2 = np.sum((self.grid_xy - centers[0]) ** 2, axis=1)
         p = float(ap["base_probability"]) + float(ap["hotspot_peak_increment"]) * np.exp(
             -dist2 / (2.0 * float(ap["hotspot_sigma_m"]) ** 2))
         p = np.clip(p, float(ap["clip_probability"][0]), float(ap["clip_probability"][1]))
@@ -315,7 +398,7 @@ class FiniteKHAPUAVMECEnv:
 
     def _uses_continuous_workload(self) -> bool:
         field = self.cfg["demand"].get("workload_field")
-        return bool(field and field.get("model") == "normalized_background_gaussian")
+        return bool(field and field.get("model") == "normalized_background_gaussian_mixture")
 
     # ------------------------------------------------ actions & kinematics
 
@@ -392,7 +475,8 @@ class FiniteKHAPUAVMECEnv:
         return bandwidth * eta_bar
 
     def _access_diagnostics(
-            self, center: np.ndarray, hap_xy: np.ndarray, uav_xy: np.ndarray,
+            self, centers: np.ndarray, weights: np.ndarray, num_hotspots: int,
+            hap_xy: np.ndarray, uav_xy: np.ndarray,
             fresh_density: np.ndarray, phi0: np.ndarray, phi: np.ndarray,
             access_gain: np.ndarray, access_rate: np.ndarray, demand_i: np.ndarray,
             accepted: np.ndarray, source_loss_uav: np.ndarray) -> dict[str, Any]:
@@ -405,11 +489,16 @@ class FiniteKHAPUAVMECEnv:
         capacity_source_density = assigned * (source_loss_uav / demand_safe)[:, None]
 
         sigma = self._hotspot_sigma_m()
-        dist_grid = np.linalg.norm(self.grid_xy - center[None, :], axis=1)
+        active_centers = centers[:num_hotspots]
+        active_weights = weights[:num_hotspots]
+        dist_grid = np.linalg.norm(self.grid_xy[:, None, :] - active_centers[None, :, :], axis=2)
+        min_grid_dist = np.min(dist_grid, axis=1)
         masks = {
-            "hotspot": dist_grid <= 1.5 * sigma,
-            "background": dist_grid > 1.5 * sigma,
+            "hotspot": min_grid_dist <= 1.5 * sigma,
+            "background": min_grid_dist > 1.5 * sigma,
         }
+        for j in range(num_hotspots):
+            masks[f"hotspot_{j}"] = dist_grid[:, j] <= 1.5 * sigma
         regions: dict[str, dict[str, float]] = {}
         for name, mask in masks.items():
             offered = float(np.sum(fresh_density[mask]) * self.cell_area)
@@ -445,10 +534,12 @@ class FiniteKHAPUAVMECEnv:
         eta_served_weighted = eta_numer / max(assigned_total, self.eps)
         eta_all_workload_weighted = eta_numer / max(total_workload, self.eps)
 
-        uav_dist = np.linalg.norm(uav_xy - center[None, :], axis=1)
-        hub_to_hotspot = float(np.linalg.norm(hap_xy - center))
+        uav_dist = np.linalg.norm(uav_xy[:, None, :] - active_centers[None, :, :], axis=2)
+        nearest_uav_dist = np.min(uav_dist, axis=1)
+        weighted_center = np.average(active_centers, axis=0, weights=active_weights)
+        hub_to_hotspot = float(np.linalg.norm(hap_xy - weighted_center))
         uav_to_hub = np.linalg.norm(uav_xy - hap_xy[None, :], axis=1)
-        return {
+        out = {
             "total_workload_bits": total_workload,
             "regions": regions,
             "eta_mean": eta_mean,
@@ -458,13 +549,16 @@ class FiniteKHAPUAVMECEnv:
             "eta_served_workload_weighted": float(eta_served_weighted),
             "eta_all_workload_weighted": float(eta_all_workload_weighted),
             "hotspot_radius_m": float(1.5 * sigma),
-            "n_core_uav": int(np.sum(uav_dist <= sigma)),
-            "n_hotspot_uav": int(np.sum(uav_dist <= 1.5 * sigma)),
-            "n_background_uav": int(np.sum(uav_dist > 1.5 * sigma)),
+            "n_core_uav": int(np.sum(nearest_uav_dist <= sigma)),
+            "n_hotspot_uav": int(np.sum(nearest_uav_dist <= 1.5 * sigma)),
+            "n_background_uav": int(np.sum(nearest_uav_dist > 1.5 * sigma)),
             "hub_to_hotspot_m": hub_to_hotspot,
             "mean_uav_to_hub_m": float(np.mean(uav_to_hub)),
             "max_uav_to_hub_m": float(np.max(uav_to_hub)),
         }
+        for j in range(num_hotspots):
+            out[f"hotspot_{j}_near_uav_count"] = int(np.sum(uav_dist[:, j] <= 1.5 * sigma))
+        return out
 
     def _hotspot_sigma_m(self) -> float:
         field = self.cfg["demand"].get("workload_field")

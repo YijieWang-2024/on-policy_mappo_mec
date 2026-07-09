@@ -95,10 +95,10 @@ class MECEnv:
 
     # -------------------------------------------------------------- obs build
     def _agent_obs(self, obs: dict[str, Any]) -> np.ndarray:
-        hub = obs["normalized"]["hap"]            # [xy(2), q(1), demand(4)] = 7
+        hub = obs["normalized"]["hap"]            # [xy(2), q(1), padded hotspots]
         uav = obs["normalized"]["uavs"]           # (K, 3): [xy(2), q(1)]
         hub_pub = hub[:3]                         # hub xy + queue
-        demand = hub[3:7]                         # demand center + velocity
+        demand = hub[3:]
         public = np.concatenate([hub_pub, demand, self.resource_context])
         rows = np.zeros((self.num_agents, OBS_DIM), dtype=np.float32)
         # agent 0 = major: own block = hub state
@@ -117,8 +117,11 @@ class MECEnv:
         # mec/w1 curve is comparable to the deterministic eval number. Lower =
         # the swarm sits where the demand is.
         uav_xy = np.asarray(info["uav_xy_m"], float)
-        center = np.asarray(info["demand_center_m"], float)
-        w1 = demand_matching_w1(uav_xy, self.env.grid_xy, self.env._demand_density(center)[0])
+        w1 = demand_matching_w1(
+            uav_xy,
+            self.env.grid_xy,
+            self.env._demand_density(info["hotspot_centers_m"], info["hotspot_weights"])[0],
+        )
         diag = info.get("access_diagnostics", {})
         regions = diag.get("regions", {})
         hot = regions.get("hotspot", {})
@@ -163,6 +166,17 @@ class MECEnv:
             "hub_to_hotspot": float(diag.get("hub_to_hotspot_m", 0.0)),
             "w1": float(w1),
         }
+        for j in range(int(info.get("num_hotspots", 0))):
+            region = regions.get(f"hotspot_{j}", {})
+            offered = float(region.get("offered_bits", 0.0))
+            accepted_j = float(region.get("accepted_bits", 0.0))
+            cost.update({
+                f"hotspot_{j}_offered": offered,
+                f"hotspot_{j}_accepted": accepted_j,
+                f"hotspot_{j}_source": float(region.get("source_bits", 0.0)),
+                f"hotspot_{j}_accept_ratio": accepted_j / max(offered, 1e-12),
+                f"hotspot_{j}_near_uav_count": float(diag.get(f"hotspot_{j}_near_uav_count", 0.0)),
+            })
         infos = [{"individual_reward": reward} for _ in range(self.num_agents)]
         infos[0].update(cost)  # team metrics ride on the major agent's info slot
         return infos

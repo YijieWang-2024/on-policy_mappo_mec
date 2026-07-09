@@ -367,6 +367,10 @@ class MECRunner(Runner):
             "background_offered", "background_accepted", "background_source",
             "eta_p05", "eta_p50", "eta_p95", "eta_served", "eta_all",
             "n_hotspot_uav", "n_background_uav", "hub_to_hotspot", "w1",
+            "hotspot_0_offered", "hotspot_0_accepted", "hotspot_0_source",
+            "hotspot_0_accept_ratio", "hotspot_0_near_uav_count",
+            "hotspot_1_offered", "hotspot_1_accepted", "hotspot_1_source",
+            "hotspot_1_accept_ratio", "hotspot_1_near_uav_count",
         )
         for key in keys:
             vals = []

@@ -211,6 +211,20 @@ conda run -n marl python -m unittest discover -s tests -v
 - shared / separated buffer 的 `t` 与 `t + 1` 索引
 - recurrent generator 的时间顺序和轨迹边界
 
+## Local artifact layout
+
+The source tree keeps `onpolicy/`, `tests/`, `docs/`, and `experiments/` as the
+tracked project surfaces. Generated local experiment outputs are consolidated
+under `artifacts/`:
+
+- `artifacts/runs/` for raw launch and training logs;
+- `artifacts/evaluations/` for held-out evaluation outputs;
+- `artifacts/analysis/` for generated figures, tables, and analysis helpers.
+
+Use `experiments/` or `docs/` for curated summaries that should remain in Git.
+The old top-level `analysis_outputs/`, `eval_outputs/`, `run_logs/`, and
+`training_logs/` paths are retired.
+
 ## Citation
 
 如果使用本项目，请引用原始 MAPPO 工作：

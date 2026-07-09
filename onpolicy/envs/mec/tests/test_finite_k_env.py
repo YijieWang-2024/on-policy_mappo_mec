@@ -6,6 +6,7 @@ import numpy as np
 
 from onpolicy.envs.mec.config_loader import load_scenario
 from onpolicy.envs.mec.finite_k_env import FiniteKHAPUAVMECEnv
+from onpolicy.envs.mec.observation import PHYSICAL_PUBLIC_STATE_DIM
 
 
 def _actions(k: int, seed: int = 7):
@@ -27,8 +28,9 @@ def test_v6_random_step_smoke_and_metrics():
     env = FiniteKHAPUAVMECEnv(cfg)
     obs, info = env.reset(seed=123)
     assert obs["normalized"]["uavs"].shape == (16, 3)
-    assert obs["normalized"]["hap"].shape == (7,)
+    assert obs["normalized"]["hap"].shape == (PHYSICAL_PUBLIC_STATE_DIM,)
     assert info["demand_center_m"].shape == (2,)
+    assert info["hotspot_centers_m"].shape == (4, 2)
 
     obs, reward, terminated, truncated, info = env.step(_actions(16))
     assert terminated is False
@@ -79,3 +81,19 @@ def test_fleet_size_override_recomputes_action_shape():
     assert terminated is False
     assert truncated is False
     assert info["projected_action"]["uav_velocity_mps"].shape == (k, 2)
+
+
+def test_v7_random_split_hotspots_reset_and_density():
+    cfg = load_scenario("v7_random_split_hotspots")
+    env = FiniteKHAPUAVMECEnv(cfg)
+    obs, info = env.reset(seed=101)
+    centers = info["hotspot_centers_m"][:2]
+    assert obs["normalized"]["hap"].shape == (PHYSICAL_PUBLIC_STATE_DIM,)
+    assert np.all(centers >= np.array([0.15 * env.lx, 0.15 * env.ly]))
+    assert np.all(centers <= np.array([0.85 * env.lx, 0.85 * env.ly]))
+    assert 1800.0 <= np.linalg.norm(centers[0] - centers[1]) <= 2700.0
+    np.testing.assert_allclose(info["hotspot_velocities_mps"], 0.0)
+    _, density = env._demand_density()
+    np.testing.assert_allclose(np.sum(density) * env.cell_area, 150e6, rtol=1e-12)
+    features = obs["normalized"]["hap"][3:].reshape(4, 5)
+    np.testing.assert_allclose(features[2:], 0.0)

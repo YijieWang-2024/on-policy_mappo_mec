@@ -5,11 +5,19 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
+from onpolicy.algorithms.mec.mec_actor_critic import _anchor_pool, _pooled_rep, _pool_dim
 from onpolicy.algorithms.mec.mec_policy import MECPolicy
 from onpolicy.algorithms.r_mappo.r_mappo import R_MAPPO
 from onpolicy.config import get_config
 from onpolicy.envs.mec.MEC_env import ACT_DIM, MECEnv
-from onpolicy.envs.mec.observation import AGENT_OBS_DIM, repeat_team_state
+from onpolicy.envs.mec.observation import (
+    AGENT_OBS_DIM,
+    OWN_SLICE,
+    PUBLIC_STATE_DIM,
+    PUBLIC_SLICE,
+    repeat_team_state,
+    team_state_dim,
+)
 from onpolicy.utils.shared_buffer import SharedReplayBuffer
 
 
@@ -41,7 +49,7 @@ def test_mec_env_adapter_and_team_state_shapes():
     assert env.action_space[0].shape == (ACT_DIM,)
 
     expected_share = repeat_team_state(obs)
-    assert share.shape == (5, 13 + 4 * 3)
+    assert share.shape == (5, team_state_dim(env.num_agents))
     np.testing.assert_allclose(share, expected_share)
     np.testing.assert_allclose(share[0], share[-1])
 
@@ -55,8 +63,8 @@ def test_mec_env_adapter_and_team_state_shapes():
     assert "accepted" in infos[0]
 
 
-def test_mec_policy_mean_and_flat_forward_shapes():
-    for arch in ("mean", "flat"):
+def test_mec_policy_arch_forward_shapes():
+    for arch in ("mean", "flat", "hotspot_pool", "anchor_pool", "grid_pool", "csd_pool", "slot_query", "mhd_deepsets"):
         args = _args(mec_policy_arch=arch)
         env = MECEnv(args)
         args.num_agents = env.num_agents
@@ -82,6 +90,136 @@ def test_mec_policy_mean_and_flat_forward_shapes():
         assert eval_values.shape == (env.num_agents, 1)
         assert eval_log_probs.shape == (env.num_agents, 1)
         assert torch.isfinite(entropy)
+
+
+def test_slot_query_policy_is_permutation_equivariant():
+    args = _args(mec_policy_arch="slot_query", mec_slot_actor_share_encoder=True)
+    env = MECEnv(args)
+    args.num_agents = env.num_agents
+    obs, share, _ = env.reset(seed=7)
+    policy = MECPolicy(
+        args,
+        env.observation_space[0],
+        env.share_observation_space[0],
+        env.action_space[0],
+        torch.device("cpu"),
+        num_agents=env.num_agents,
+    )
+    rnn = np.zeros((env.num_agents, args.recurrent_N, args.hidden_size), dtype=np.float32)
+    masks = np.ones((env.num_agents, 1), dtype=np.float32)
+
+    perm = np.array([2, 0, 3, 1])
+    obs_perm = obs.copy()
+    obs_perm[1:] = obs[1:][perm]
+    share_perm = share.copy()
+    uavs = share[0, PUBLIC_STATE_DIM:].reshape(env.num_agents - 1, -1)
+    share_perm[:, PUBLIC_STATE_DIM:] = uavs[perm].reshape(1, -1)
+
+    values, actions, _, _, _ = policy.get_actions(share, obs, rnn, rnn, masks, deterministic=True)
+    values_perm, actions_perm, _, _, _ = policy.get_actions(
+        share_perm, obs_perm, rnn, rnn, masks, deterministic=True
+    )
+    torch.testing.assert_close(actions_perm[0], actions[0], atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(actions_perm[1:], actions[1:][perm], atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(values_perm, values, atol=1e-5, rtol=1e-5)
+
+
+def test_mhd_deepsets_policy_is_permutation_equivariant():
+    args = _args(
+        mec_policy_arch="mhd_deepsets",
+        mec_critic_arch="mean",
+        mec_deepsets_features="ref",
+        mec_scenario="v7_random_split_hotspots",
+    )
+    env = MECEnv(args)
+    args.num_agents = env.num_agents
+    obs, share, _ = env.reset(seed=17)
+    policy = MECPolicy(
+        args,
+        env.observation_space[0],
+        env.share_observation_space[0],
+        env.action_space[0],
+        torch.device("cpu"),
+        num_agents=env.num_agents,
+    )
+    rnn = np.zeros((env.num_agents, args.recurrent_N, args.hidden_size), dtype=np.float32)
+    masks = np.ones((env.num_agents, 1), dtype=np.float32)
+
+    perm = np.array([2, 0, 3, 1])
+    obs_perm = obs.copy()
+    obs_perm[1:] = obs[1:][perm]
+    share_perm = share.copy()
+    uavs = share[0, PUBLIC_STATE_DIM:].reshape(env.num_agents - 1, -1)
+    share_perm[:, PUBLIC_STATE_DIM:] = uavs[perm].reshape(1, -1)
+
+    values, actions, _, _, _ = policy.get_actions(share, obs, rnn, rnn, masks, deterministic=True)
+    values_perm, actions_perm, _, _, _ = policy.get_actions(
+        share_perm, obs_perm, rnn, rnn, masks, deterministic=True
+    )
+    torch.testing.assert_close(actions_perm[0], actions[0], atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(actions_perm[1:], actions[1:][perm], atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(values_perm, values, atol=1e-5, rtol=1e-5)
+
+
+def test_slot_query_separate_critic_does_not_backprop_to_actor_encoder():
+    args = _args(mec_policy_arch="slot_query", mec_slot_critic_encoder="separate")
+    env = MECEnv(args)
+    policy = MECPolicy(
+        args,
+        env.observation_space[0],
+        env.share_observation_space[0],
+        env.action_space[0],
+        torch.device("cpu"),
+        num_agents=env.num_agents,
+    )
+    _, share, _ = env.reset(seed=8)
+    rnn = np.zeros((env.num_agents, args.recurrent_N, args.hidden_size), dtype=np.float32)
+    masks = np.ones((env.num_agents, 1), dtype=np.float32)
+    values = policy.get_values(share, rnn, masks)
+    values.sum().backward()
+    assert all(p.grad is None for p in policy.actor.minor_encoder.parameters())
+
+
+def test_slot_query_reconstruction_loss_is_trainable():
+    args = _args(mec_policy_arch="slot_query", mec_slot_actor_share_encoder=True)
+    env = MECEnv(args)
+    policy = MECPolicy(
+        args,
+        env.observation_space[0],
+        env.share_observation_space[0],
+        env.action_space[0],
+        torch.device("cpu"),
+        num_agents=env.num_agents,
+    )
+    _, share, _ = env.reset(seed=9)
+    loss = policy.mec_set_reconstruction_loss(share)
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert any(p.grad is not None for p in policy.actor.reconstruction_decoder.parameters())
+
+
+def test_anchor_pool_descriptor_shapes_padding_and_permutation_invariance():
+    args = _args(mec_scenario="v7_random_split_hotspots", mec_policy_arch="hotspot_pool")
+    env = MECEnv(args)
+    obs, _, _ = env.reset(seed=5)
+    public = torch.as_tensor(obs[0:1, PUBLIC_SLICE], dtype=torch.float32)
+    uavs = torch.as_tensor(obs[1:, OWN_SLICE][None, :, :], dtype=torch.float32)
+
+    hotspot_desc = _anchor_pool(public, uavs, "hotspot_pool")
+    anchor_desc = _anchor_pool(public, uavs, "anchor_pool")
+    grid_desc = _anchor_pool(public, uavs, "grid_pool")
+    csd_desc = _pooled_rep(public, uavs, "csd_pool")
+    assert hotspot_desc.shape[-1] == _pool_dim("hotspot_pool") == 16
+    assert anchor_desc.shape[-1] == _pool_dim("anchor_pool") == 36
+    assert grid_desc.shape[-1] == _pool_dim("grid_pool") == 52
+    assert csd_desc.shape[-1] == _pool_dim("csd_pool") == 42
+    torch.testing.assert_close(hotspot_desc.reshape(1, 4, 4)[:, 2:], torch.zeros(1, 2, 4))
+
+    perm = torch.tensor([2, 0, 3, 1])
+    torch.testing.assert_close(hotspot_desc, _anchor_pool(public, uavs[:, perm], "hotspot_pool"))
+    torch.testing.assert_close(anchor_desc, _anchor_pool(public, uavs[:, perm], "anchor_pool"))
+    torch.testing.assert_close(grid_desc, _anchor_pool(public, uavs[:, perm], "grid_pool"))
+    torch.testing.assert_close(csd_desc, _pooled_rep(public, uavs[:, perm], "csd_pool"))
 
 
 def test_beta_head_initializes_to_requested_distribution():

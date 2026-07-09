@@ -79,9 +79,9 @@ TensorBoard path is used when WandB is disabled by the flag logic.
 
 Source summary:
 
-- `eval_outputs/migration_compare_resetperm1500_seed1/summary.json`
-- `eval_outputs/migration_compare_resetperm1500_seed1/mean_old_vs_new_episode_reward.png`
-- `eval_outputs/migration_compare_resetperm1500_seed1/flat_old_vs_new_episode_reward.png`
+- `experiments/archive/generated_outputs/v6_hap_loadbearing/migration_compare_resetperm1500_seed1/summary.json`
+- `experiments/archive/generated_outputs/v6_hap_loadbearing/migration_compare_resetperm1500_seed1/mean_old_vs_new_episode_reward.png`
+- `experiments/archive/generated_outputs/v6_hap_loadbearing/migration_compare_resetperm1500_seed1/flat_old_vs_new_episode_reward.png`
 
 | Architecture | Old best eval reward | New best eval reward | Old last eval reward | New last eval reward |
 | --- | ---: | ---: | ---: | ---: |

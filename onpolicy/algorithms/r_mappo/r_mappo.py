@@ -53,7 +53,7 @@ class R_MAPPO():
         self._use_mec_set_reconstruction = bool(
             self.mec_set_reconstruction_coef > 0.0
             and getattr(args, "env_name", None) == "MEC"
-            and getattr(args, "mec_policy_arch", None) == "set"
+            and getattr(args, "mec_policy_arch", None) in {"set", "slot_query"}
         )
         
         assert (self._use_popart and self._use_valuenorm) == False, ("self._use_popart and self._use_valuenorm can not be set True simultaneously")

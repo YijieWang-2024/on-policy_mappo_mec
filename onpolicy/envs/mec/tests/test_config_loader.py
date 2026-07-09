@@ -41,3 +41,15 @@ def test_continuous_workload_reference_scenario_still_loads():
     assert cfg["name"] == "v6_continuous_workload"
     assert cfg["env"]["fleet_size_k"] == 16
     assert cfg["demand"]["workload_field"]["total_workload_bits_per_slot"] == 150e6
+
+
+def test_v7_split_hotspot_scenarios_load():
+    random_cfg = load_scenario("v7_random_split_hotspots")
+    proc = random_cfg["demand"]["process"]
+    field = random_cfg["demand"]["workload_field"]
+    assert proc["model"] == "static_random_split_hotspots"
+    assert proc["num_hotspots"] == 2
+    assert math.isclose(field["background_weight"] + sum(field["hotspot_weights"]), 1.0)
+
+    probe_cfg = load_scenario("v7_fixed_split_hotspots_probe")
+    assert probe_cfg["demand"]["process"]["initial_hotspot_fracs"] == [[0.30, 0.50], [0.70, 0.50]]

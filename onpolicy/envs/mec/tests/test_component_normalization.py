@@ -14,6 +14,7 @@ from onpolicy.envs.mec.normalization import (
 from onpolicy.envs.mec.observation import (
     AGENT_OBS_DIM,
     OWN_SLICE,
+    PHYSICAL_PUBLIC_STATE_DIM,
     PHYSICAL_PUBLIC_SLICE,
     PUBLIC_SLICE,
     RESOURCE_CONTEXT_SLICE,
@@ -23,7 +24,7 @@ from onpolicy.envs.mec.observation import (
 
 
 NUM_AGENTS = 3
-PUBLIC = np.asarray([12, 22, 32, 42, 52, 62, 72], dtype=np.float32)
+PUBLIC = np.arange(1, PHYSICAL_PUBLIC_STATE_DIM + 1, dtype=np.float32) * 10 + 2
 RESOURCE = np.asarray([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], dtype=np.float32)
 UAVS = np.asarray([[2, 4, 6], [0, 0, 0]], dtype=np.float32)
 
@@ -40,8 +41,10 @@ def _obs(public=PUBLIC, uavs=UAVS):
 
 def _seeded_normalizer(num_agents=NUM_AGENTS):
     normalizer = MECComponentNormalizer(num_agents, clip_obs=100.0)
-    normalizer.physical_public_rms.mean = np.asarray([10, 20, 30, 40, 50, 60, 70], dtype=np.float64)
-    normalizer.physical_public_rms.var = np.full(7, 4.0, dtype=np.float64)
+    normalizer.physical_public_rms.mean = np.arange(
+        1, PHYSICAL_PUBLIC_STATE_DIM + 1, dtype=np.float64
+    ) * 10
+    normalizer.physical_public_rms.var = np.full(PHYSICAL_PUBLIC_STATE_DIM, 4.0, dtype=np.float64)
     normalizer.physical_public_rms.count = 10.0
     normalizer.uav_state_rms.mean = np.asarray([1, 2, 3], dtype=np.float64)
     normalizer.uav_state_rms.var = np.asarray([1, 4, 9], dtype=np.float64)
@@ -57,7 +60,7 @@ def test_component_normalizer_reconstructs_obs_and_share_obs():
     norm_obs = normalizer.normalize_obs(obs)
     norm_share = normalizer.normalize_share_obs(share_obs)
 
-    public_expected = np.ones(7, dtype=np.float32)
+    public_expected = np.ones(PHYSICAL_PUBLIC_STATE_DIM, dtype=np.float32)
     uav_expected = np.asarray([[1, 1, 1], [-1, -1, -1]], dtype=np.float32)
 
     assert norm_obs.shape == obs.shape
@@ -75,9 +78,12 @@ def test_component_normalizer_reconstructs_obs_and_share_obs():
     np.testing.assert_allclose(norm_obs[1:, OWN_SLICE], uav_expected)
 
     np.testing.assert_allclose(norm_share[0], norm_share[-1])
-    np.testing.assert_allclose(norm_share[0, :7], public_expected)
-    np.testing.assert_allclose(norm_share[0, 7:13], RESOURCE)
-    np.testing.assert_allclose(norm_share[0, 13:].reshape(2, 3), uav_expected)
+    np.testing.assert_allclose(norm_share[0, :PHYSICAL_PUBLIC_STATE_DIM], public_expected)
+    np.testing.assert_allclose(
+        norm_share[0, PHYSICAL_PUBLIC_STATE_DIM:PHYSICAL_PUBLIC_STATE_DIM + 6],
+        RESOURCE,
+    )
+    np.testing.assert_allclose(norm_share[0, PHYSICAL_PUBLIC_STATE_DIM + 6:].reshape(2, 3), uav_expected)
 
 
 def test_component_update_uses_one_public_sample_and_all_uavs():

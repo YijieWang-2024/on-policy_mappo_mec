@@ -20,7 +20,12 @@ class MECPolicy:
         self.lr = args.lr
         self.critic_lr = args.critic_lr
         self.actor = MECActor(args, obs_space, act_space, num_agents, device)
-        self.critic = MECCritic(args, cent_obs_space, num_agents, device)
+        actor_encoder = getattr(self.actor, "minor_encoder", None)
+        self.critic = MECCritic(args, cent_obs_space, num_agents, device, actor_encoder=actor_encoder)
+        self.recompute_values_after_actor_update = (
+            getattr(args, "mec_policy_arch", None) == "slot_query"
+            and getattr(args, "mec_slot_critic_encoder", "separate") == "shared_grad"
+        )
         self.actor_optimizer = torch.optim.Adam(
             self.actor.parameters(), lr=self.lr, eps=args.opti_eps, weight_decay=args.weight_decay
         )
@@ -55,3 +60,6 @@ class MECPolicy:
             obs, rnn_states_actor, masks, available_actions, deterministic
         )
         return actions, rnn_states_actor
+
+    def mec_set_reconstruction_loss(self, cent_obs):
+        return self.actor.reconstruction_loss(cent_obs)

@@ -253,8 +253,33 @@ def get_config():
     parser.add_argument("--mec_logstd_init", type=float, default=-1.9,
                         help="initial log-std for MEC Gaussian velocity heads")
     parser.add_argument("--mec_policy_arch", type=str, default="mean",
-                        choices=["mean", "flat"],
+                        choices=["mean", "flat", "hotspot_pool", "anchor_pool", "grid_pool", "csd_pool", "slot_query", "mhd_deepsets"],
                         help="MEC population representation")
+    parser.add_argument("--mec_critic_arch", type=str, default=None,
+                        choices=["mean", "flat", "hotspot_pool", "anchor_pool", "grid_pool", "csd_pool", "slot_query", "mhd_deepsets"],
+                        help="optional MEC critic population representation override")
+    parser.add_argument("--mec_deepsets_features", type=str, default="geo",
+                        choices=["own", "geo", "ref"],
+                        help="UAV token features for mhd_deepsets")
+    parser.add_argument("--mec_deepsets_heads", type=int, default=1,
+                        help="parallel DeepSets token encoders for mhd_deepsets")
+    parser.add_argument("--mec_deepsets_pool", type=str, default="mean_std",
+                        choices=["mean", "mean_std"],
+                        help="symmetric pooling statistics for mhd_deepsets")
+    parser.add_argument("--mec_slot_num", type=int, default=4,
+                        help="number of invariant MEC slot-query memory slots")
+    parser.add_argument("--mec_slot_heads", type=int, default=4,
+                        help="attention heads for MEC slot-query networks")
+    parser.add_argument("--mec_slot_blocks", type=int, default=1,
+                        help="self-attention blocks before slot pooling")
+    parser.add_argument("--mec_slot_actor_share_encoder", action="store_true",
+                        default=False,
+                        help="share the UAV and HAP actor slot encoder")
+    parser.add_argument("--mec_slot_critic_encoder", type=str, default="separate",
+                        choices=["separate", "actor_detached", "shared_grad"],
+                        help="critic slot encoder sharing mode for slot_query")
+    parser.add_argument("--mec_set_reconstruction_coef", type=float, default=0.0,
+                        help="optional Sinkhorn set reconstruction loss coefficient")
     parser.add_argument("--mec_beta_alpha_init", type=float, default=2.0,
                         help="initial alpha for MEC UAV Beta offload head")
     parser.add_argument("--mec_beta_eta_init", type=float, default=2.0,

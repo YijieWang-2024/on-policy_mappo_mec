@@ -25,6 +25,7 @@ def _parse(argv):
     parser.add_argument("--mec_eval_seed", type=int, default=None)
     parser.add_argument("--mec_eval_seed_stride", type=int, default=None)
     parser.add_argument("--mec_eval_episodes", type=int, default=None)
+    parser.add_argument("--mec_eval_include_episodes", action="store_true")
     parser.add_argument("--mec_obs_norm_mode", choices=["flat", "component"], default="flat")
     args = parser.parse_known_args(argv)[0]
     saved = load_model_config(args.model_dir)
@@ -138,12 +139,13 @@ def _episode(args, policy, seed, obs_norm=None):
     masks = np.ones((env.num_agents, 1), dtype=np.float32)
     total_reward = 0.0
     last_info = None
+    rng = np.random.default_rng(seed)
 
     for _ in range(env.env.horizon):
         if args.mec_eval_controller == "policy":
             action, rnn_states = _policy_action(policy, env, policy_obs, rnn_states, masks)
         elif args.mec_eval_controller == "random":
-            action = np.random.default_rng(seed).uniform(-1, 1, (env.num_agents, ACT_DIM))
+            action = rng.uniform(-1, 1, (env.num_agents, ACT_DIM))
         elif args.mec_eval_controller == "hover":
             action = np.zeros((env.num_agents, ACT_DIM), dtype=np.float32)
             action[1:, 2] = 0.5
@@ -184,7 +186,10 @@ def main(argv=None):
         for i in range(args.mec_eval_episodes)
     ]
     mean = {k: float(np.mean([row[k] for row in rows])) for k in rows[0]}
-    print(json.dumps({"controller": args.mec_eval_controller, "episodes": len(rows), "mean": mean}, indent=2))
+    result = {"controller": args.mec_eval_controller, "episodes": len(rows), "mean": mean}
+    if args.mec_eval_include_episodes:
+        result["episode_data"] = rows
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
